@@ -4,18 +4,30 @@
     "version": "1.0.0",
     "type": "module",
     "scripts": {
-        "dev": "vite",
-        "build": "tsc && vite build",
-        "preview": "vite preview"
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint"
     },
     "devDependencies": {
-        "typescript": "^5.7.0",
-        "vite": "^6.2.0"
+        "@tailwindcss/postcss": "^4.2.2",
+        "@types/node": "^25.5.2",
+        "@types/react": "^19.2.14",
+        "@types/react-dom": "^19.2.3",
+        "autoprefixer": "^10.4.27",
+        "postcss": "^8.5.9",
+        "tailwindcss": "^4.2.2",
+        "typescript": "^5.7.0"
     },
     "dependencies": {
         "@esotericsoftware/spine-webgl": "^4.2.106",
+        "@supabase/ssr": "^0.10.2",
         "@supabase/supabase-js": "^2.103.0",
-        "dexie": "^4.4.1",
-        "jszip": "^3.10.1"
+        "jszip": "^3.10.1",
+        "lucide-react": "^1.8.0",
+        "next": "^16.2.3",
+        "react": "^19.2.5",
+        "react-dom": "^19.2.5",
+        "zustand": "^5.0.12"
     }
 }

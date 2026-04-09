@@ -1,0 +1,10 @@
+name = "live-asset-r2-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "live-asset-files"
+
+[vars]
+# Set via: wrangler secret put WORKER_SECRET
