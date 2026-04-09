@@ -18,7 +18,14 @@ export async function updateSession(request: NextRequest) {
     }
   );
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+  const pathname = request.nextUrl.pathname;
+
+  // Allow unauthenticated access to auth API routes (e.g., admin-login)
+  if (pathname.startsWith('/api/auth/')) {
+    return supabaseResponse;
+  }
+
+  if (!user && !pathname.startsWith('/login')) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);

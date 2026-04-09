@@ -20,13 +20,36 @@ export function AuthForm() {
     e.preventDefault();
     setError(''); setSuccess(''); setLoading(true);
     try {
-      if (view === 'signup') {
+      if (view === 'login') {
+        const input = email.trim();
+
+        // If input doesn't contain @, treat as admin username login
+        if (!input.includes('@')) {
+          const res = await fetch('/api/auth/admin-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: input, password }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setError(data.error || 'Invalid credentials');
+          } else {
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: data.access_token,
+              refresh_token: data.refresh_token,
+            });
+            if (sessionError) { setError(sessionError.message); }
+            else { router.push('/library'); router.refresh(); }
+          }
+        } else {
+          // Normal Supabase email login
+          const { error } = await supabase.auth.signInWithPassword({ email: input, password });
+          if (error) setError(error.message); else { router.push('/library'); router.refresh(); }
+        }
+      } else if (view === 'signup') {
         if (!email.endsWith('@vng.com.vn')) { setError('Unable to create account. Please check your credentials.'); setLoading(false); return; }
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) setError(error.message); else setSuccess('Check your email for a confirmation link.');
-      } else if (view === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) setError(error.message); else { router.push('/library'); router.refresh(); }
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email);
         if (error) setError(error.message); else setSuccess('Check your email for a password reset link.');
@@ -50,7 +73,10 @@ export function AuthForm() {
         ))}
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email"
+        <input type={view === 'login' ? 'text' : 'email'}
+          placeholder={view === 'login' ? 'Email or Username' : 'email@vng.com.vn'}
+          value={email} onChange={(e) => setEmail(e.target.value)} required
+          autoComplete={view === 'login' ? 'username' : 'email'}
           className="w-full rounded-lg border border-border bg-panel-secondary px-4 py-2.5 text-sm text-text outline-none placeholder:text-dim focus:border-accent" />
         {view !== 'forgot' && (
           <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
