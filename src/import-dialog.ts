@@ -90,9 +90,19 @@ export async function prepareImportItems(skeletonSets: Array<{
     });
 }
 
+// Phase 1E: Track pending resolve to prevent leaks on rapid re-open
+let pendingResolve: ((v: ImportDialogResult | null) => void) | null = null;
+
 /** Show the import confirm dialog. Returns promise that resolves with user selection or null (cancelled). */
 export function showImportDialog(items: ImportDialogItem[]): Promise<ImportDialogResult | null> {
     return new Promise(async (resolve) => {
+        // Phase 1E: Resolve any previous pending dialog with null before replacing
+        if (pendingResolve) {
+            pendingResolve(null);
+            pendingResolve = null;
+        }
+        pendingResolve = resolve;
+
         // Remove any existing dialog and leftover popups/backdrops
         document.querySelector('.import-dialog-overlay')?.remove();
         closeAllPopups();

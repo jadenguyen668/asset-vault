@@ -802,8 +802,8 @@ export function initLibrarySearch() {
 
     function addExpandBtn() {
         if (document.getElementById('btn-expand-panel')) return;
-        const dropZoneEl = document.getElementById('drop-zone');
-        if (!dropZoneEl) return;
+        const mainEl = document.getElementById('main');
+        if (!mainEl) return;
         const btn = document.createElement('button');
         btn.id = 'btn-expand-panel';
         btn.className = 'expand-panel-btn';
@@ -818,7 +818,7 @@ export function initLibrarySearch() {
 
             btn.remove();
         });
-        dropZoneEl.appendChild(btn);
+        mainEl.appendChild(btn);
     }
 
     if (searchInput) {

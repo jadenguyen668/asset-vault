@@ -37,21 +37,33 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   font-family:var(--mono);background:var(--accent);color:#fff;
 }
 .badge.hidden{display:none}
+.badge.mode-preview{background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;animation:pulse-badge 2s ease-in-out infinite}
+.badge.mode-library{background:linear-gradient(135deg,#7c5cfc,#a78bfa);color:#fff}
+@keyframes pulse-badge{0%,100%{opacity:1}50%{opacity:0.7}}
 .file-label{font-size:12px;color:var(--dim);font-family:var(--mono)}
 
-#main{display:flex;flex:1;overflow:hidden}
+#main{display:flex;flex:1;overflow:hidden;position:relative}
 
 /* ── Canvas ────────────────────────────────────────────────────── */
-#canvas-wrap{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+#canvas-wrap{
+  flex:1;position:relative;overflow:hidden;
+  background:repeating-conic-gradient(#2a2a3a 0% 25%, #1e1e2e 0% 50%) 50%/20px 20px;
+}
 #pixi-container{width:100%;height:100%}
+.preview-empty-hint{
+  position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;
+  color:var(--dim);font-size:12px;font-family:var(--mono);letter-spacing:0.5px;
+  pointer-events:none;
+}
+.preview-empty-hint.hidden{display:none}
 #pixi-container canvas{width:100%!important;height:100%!important;display:block}
 
 /* ── Drop Zone (Library Container) ─────────────────────────────── */
 .drop-zone{
   position:relative;flex:1;z-index:20;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
-  background:var(--bg);pointer-events:none;transition:flex .3s ease;overflow:hidden;
+  background:var(--bg);pointer-events:all;transition:flex .3s ease;overflow:hidden;
 }
-.drop-zone.active{pointer-events:all}
 #main.split-mode .drop-zone {
   flex: 0 0 900px !important;
   max-width: 60%;
@@ -90,9 +102,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   transition:all .2s;backdrop-filter:blur(6px);
 }
 .collapse-panel-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
-/* When collapsed, show expand button on the library side */
+/* When collapsed, show expand button on the right edge of main */
 .expand-panel-btn{
-  position:absolute;top:8px;right:8px;z-index:30;width:28px;height:28px;border-radius:6px;
+  position:absolute;top:8px;right:8px;z-index:40;width:28px;height:28px;border-radius:6px;
   background:rgba(0,0,0,0.5);border:1px solid var(--border);color:var(--dim);
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;
   transition:all .2s;backdrop-filter:blur(6px);
@@ -109,16 +121,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 .right-bottom{
   flex:1;display:flex;overflow:hidden;
-  border-top:1px solid var(--border);min-height:200px;
+  border-top:1px solid var(--border);min-height:180px;
 }
 
 /* ── Controls (Embedded in right-bottom left column) ────────── */
 .controls-embedded{
-  width:240px;background:var(--panel);border-right:1px solid var(--border);
-  display:flex;flex-direction:column;padding:14px;gap:14px;overflow-y:auto;flex-shrink:0;
+  flex:1;min-width:0;background:var(--panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:10px;gap:8px;overflow-y:auto;flex-shrink:0;
 }
 .controls.hidden{display:none}
-.ctrl-section{display:flex;flex-direction:column;gap:6px}
+.ctrl-section{display:flex;flex-direction:column;gap:4px}
 .ctrl-label{
   font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);
   font-family:var(--mono);display:flex;align-items:center;justify-content:space-between;
@@ -126,12 +138,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .ctrl-val{color:var(--accent);font-size:10px}
 .ctrl-select{
   width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);
-  padding:7px 10px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none;cursor:pointer;
+  padding:5px 8px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none;cursor:pointer;
 }
 .ctrl-row{display:flex;gap:4px;flex-wrap:wrap}
 .ctrl-btn{
-  padding:6px 14px;border-radius:var(--radius);border:1px solid var(--border);
-  background:var(--panel2);color:var(--dim);font-size:13px;cursor:pointer;
+  padding:4px 10px;border-radius:var(--radius);border:1px solid var(--border);
+  background:var(--panel2);color:var(--dim);font-size:12px;cursor:pointer;
   transition:all .15s;display:flex;align-items:center;justify-content:center;
 }
 .ctrl-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -160,15 +172,15 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .info-row span:first-child{color:var(--dim)}
 .info-row span:last-child{color:var(--accent);font-family:var(--mono);font-size:10px}
 .ctrl-btn-full{
-  width:100%;padding:8px;border-radius:var(--radius);border:1px solid var(--border);
-  background:var(--panel2);color:var(--text);font-family:var(--font);font-size:12px;
+  width:100%;padding:6px;border-radius:var(--radius);border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);font-family:var(--font);font-size:11px;
   font-weight:600;cursor:pointer;transition:all .15s;
 }
 .ctrl-btn-full:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* ── Right Properties Panel ────────────────────────────────── */
 .right-properties{
-  flex:1;background:var(--panel2);display:flex;flex-direction:column;overflow-y:auto;
+  flex:1;background:var(--panel2);display:flex;flex-direction:column;overflow:hidden;
   min-width:0;
 }
 .right-properties .props-header{
@@ -781,3 +793,73 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   cursor:pointer;transition:all .15s;
 }
 .collection-create-btn:hover{background:var(--accent);color:#fff}
+
+/* ── Auth Modal ───────────────────────────────────────────────── */
+.auth-modal-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);
+  display:flex;align-items:center;justify-content:center;
+}
+.auth-card{
+  background:var(--panel);border:1px solid var(--border);border-radius:16px;
+  padding:40px 36px;width:380px;max-width:90vw;
+  display:flex;flex-direction:column;gap:20px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+.auth-logo{
+  font-size:22px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
+  color:#fff;text-align:center;
+}
+.auth-logo .accent{
+  background:linear-gradient(90deg,#ff8c00,#dd2476);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.auth-title{font-size:18px;font-weight:700;color:var(--text);text-align:center;margin:0}
+.auth-subtitle{font-size:12px;color:var(--dim);text-align:center;margin:-8px 0 0}
+.auth-form{display:flex;flex-direction:column;gap:12px}
+.auth-form input{
+  padding:10px 14px;border-radius:8px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);font-size:13px;font-family:var(--font);
+  outline:none;transition:border-color .2s;
+}
+.auth-form input:focus{border-color:var(--accent)}
+.auth-form input::placeholder{color:var(--dim)}
+.auth-submit{
+  padding:10px;border-radius:8px;border:none;
+  background:linear-gradient(135deg,var(--accent),#a78bfa);color:#fff;
+  font-size:14px;font-weight:700;cursor:pointer;transition:opacity .2s;
+}
+.auth-submit:hover{opacity:0.9}
+.auth-submit:disabled{opacity:0.5;cursor:not-allowed}
+.auth-error{
+  background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);
+  color:var(--red);padding:8px 12px;border-radius:8px;font-size:12px;text-align:center;
+}
+.auth-error.hidden{display:none}
+.auth-success{
+  background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);
+  color:var(--green);padding:8px 12px;border-radius:8px;font-size:12px;text-align:center;
+}
+.auth-success.hidden{display:none}
+.auth-switch{font-size:12px;color:var(--dim);text-align:center}
+.auth-switch a{color:var(--accent);text-decoration:none;font-weight:600}
+.auth-switch a:hover{text-decoration:underline}
+
+/* ── User Menu (Header) ──────────────────────────────────────── */
+.user-menu-widget{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 8px;border-radius:8px;
+  background:rgba(255,255,255,0.05);border:1px solid var(--border);
+}
+.user-avatar{
+  width:24px;height:24px;border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),#a78bfa);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;
+}
+.user-email{font-size:11px;color:var(--dim);font-family:var(--mono)}
+.user-logout-btn{
+  background:none;border:none;color:var(--dim);cursor:pointer;
+  padding:2px;display:flex;transition:color .2s;
+}
+.user-logout-btn:hover{color:var(--red)}

@@ -13,6 +13,9 @@
 </head>
 
 <body>
+  <!-- Auth Modal (only shown when Supabase is configured and user not logged in) -->
+  <div id="auth-modal" class="auth-modal-overlay" style="display:none"></div>
+
   <div id="app">
     <!-- Header -->
     <header id="header">
@@ -21,8 +24,10 @@
         <span class="logo-text">LIVE <span class="accent">ASSET</span></span>
       </div>
       <div class="header-info">
+        <span id="mode-badge" class="badge hidden"></span>
         <span id="version-badge" class="badge hidden">v?.?</span>
         <span id="file-name" class="file-label">No file loaded</span>
+        <div id="user-menu"></div>
       </div>
     </header>
 
@@ -77,6 +82,10 @@
         <!-- TOP: Preview Canvas (50% height) -->
         <div class="right-preview">
           <div id="canvas-wrap">
+            <div id="preview-empty-hint" class="preview-empty-hint">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Drop asset here to preview</span>
+            </div>
             <div id="pixi-container"></div>
             <div id="asset-container" style="display:none; width: 100%; height: 100%; align-items: center; justify-content: center; position: absolute; top:0; left:0;"></div>
             <div id="grid-container" class="grid-container" style="display:none"></div>
@@ -148,17 +157,6 @@
               <input id="bg-file-input" type="file" accept="image/*" style="display:none" />
             </div>
 
-            <!-- Info -->
-            <div class="ctrl-section">
-              <div class="ctrl-label">Info</div>
-              <div id="info-panel" class="info-panel">
-                <div class="info-row"><span>Bones</span><span id="info-bones">—</span></div>
-                <div class="info-row"><span>Slots</span><span id="info-slots">—</span></div>
-                <div class="info-row"><span>Animations</span><span id="info-anims">—</span></div>
-                <div class="info-row"><span>Skins</span><span id="info-skins">—</span></div>
-              </div>
-            </div>
-
             <!-- Export -->
             <div class="ctrl-section" id="export-section">
               <div class="ctrl-label">Export</div>
@@ -173,6 +171,11 @@
                   <span id="mix-val" style="font-family:var(--mono);min-width:32px;text-align:right">0.2s</span>
                 </label>
               </div>
+            </div>
+
+            <!-- Add to Library -->
+            <div class="ctrl-section">
+              <button id="btn-add-library" class="ctrl-btn-full" style="background:var(--accent);display:none">+ Add to Library</button>
             </div>
 
             <!-- New file -->

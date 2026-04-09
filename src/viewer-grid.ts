@@ -57,6 +57,7 @@ interface GridCell {
 let cells: GridCell[] = [];
 let gridContainer: HTMLElement | null = null;
 let animFrameId: number | null = null;
+let gridDestroyed = true; // Phase 1A: guard for render loop
 let gridPlaying = true;
 let lastTime = 0;
 let onClickCallback: ((animName: string) => void) | null = null;
@@ -116,9 +117,9 @@ export function setGridScale(scale: number) {
 }
 
 export function setGridViewZoom(zoom: number) {
-    gridViewZoom = zoom;
+    gridViewZoom = Math.max(0.2, Math.min(5, zoom));
     gridZoomOverride = true;
-    cells.forEach(cell => { cell.zoom = zoom; });
+    cells.forEach(cell => { cell.zoom = gridViewZoom; });
 }
 
 export function setGridBgImage(img: HTMLImageElement | null) {
@@ -193,6 +194,7 @@ export async function initGridView(data: GridSpineData): Promise<void> {
     }
 
     // Start render loop
+    gridDestroyed = false;
     lastTime = performance.now() / 1000;
     animFrameId = requestAnimationFrame(gridRenderLoop);
 }
@@ -231,6 +233,7 @@ export async function initMultiSkeletonGrid(dataSets: GridSpineData[]): Promise<
     }
 
     // Start render loop
+    gridDestroyed = false;
     lastTime = performance.now() / 1000;
     animFrameId = requestAnimationFrame(gridRenderLoop);
 }
@@ -411,14 +414,27 @@ async function initMultiCell4x(data: GridSpineData, skeletonName: string) {
 
 
 export function destroyGridView() {
+    gridDestroyed = true; // Phase 1A: stop render loop immediately
     if (animFrameId !== null) {
         cancelAnimationFrame(animFrameId);
         animFrameId = null;
     }
     cells.forEach(cell => {
+        // Phase 1B: remove global mouse listeners before disposing
+        if ((cell as any)._onMouseMove) {
+            window.removeEventListener('mousemove', (cell as any)._onMouseMove);
+        }
+        if ((cell as any)._onMouseUp) {
+            window.removeEventListener('mouseup', (cell as any)._onMouseUp);
+        }
         // Properly dispose WebGL resources
         try {
             if (cell.renderer?.dispose) cell.renderer.dispose();
+        } catch { /* ignore */ }
+        // Dispose cached textures
+        try {
+            if ((cell as any)._checkerTex?.dispose) (cell as any)._checkerTex.dispose();
+            if ((cell as any)._bgTex?.dispose) (cell as any)._bgTex.dispose();
         } catch { /* ignore */ }
         // Force-lose GL context to free GPU resources
         const gl = (cell.skeleton as any)?._gl as WebGLRenderingContext;
@@ -774,6 +790,9 @@ function setupCellInteraction(cell: GridCell) {
         dragging = false;
     };
 
+    // Phase 1B: store references for cleanup in destroyGridView
+    (cell as any)._onMouseMove = onMouseMove;
+    (cell as any)._onMouseUp = onMouseUp;
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
 
@@ -803,6 +822,7 @@ function syncCellCanvasSize(cell: GridCell) {
 
 // ── Render Loop ─────────────────────────────────────────────────
 function gridRenderLoop() {
+    if (gridDestroyed) return; // Phase 1A: stop if grid was destroyed
     animFrameId = requestAnimationFrame(gridRenderLoop);
 
     const now = performance.now() / 1000;

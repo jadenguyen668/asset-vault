@@ -1,4 +1,6 @@
 import './style.css';
+import { isSupabaseConfigured } from './supabase';
+import { initAuthUI } from './auth-ui';
 import { detectVersion } from './version-detect';
 import {
     initViewer, loadSpine, getAnimations, getSkins, getSkeletonInfo,
@@ -117,7 +119,7 @@ function setupDropZone() {
         }
     });
 
-    // Click IMPORT button → file picker
+    // Click IMPORT button → file picker → import directly to library
     const btnImport = document.getElementById('btn-sidebar-import');
     if (btnImport) {
         btnImport.addEventListener('click', () => {
@@ -126,7 +128,86 @@ function setupDropZone() {
             input.multiple = true;
             input.addEventListener('change', async () => {
                 if (input.files && input.files.length > 0) {
-                    await handleFiles(Array.from(input.files));
+                    // Parse files first to get skeleton data
+                    const files = Array.from(input.files);
+                    const tempSets: GridSpineData[] = [];
+                    const jsonFiles = files.filter(f => {
+                        const n = f.name.toLowerCase();
+                        return n.endsWith('.json') || n.endsWith('.skel');
+                    });
+                    for (const jf of jsonFiles) {
+                        const data = await prepareGridSpineData(jf, files);
+                        if (data) tempSets.push(data);
+                    }
+                    // Also handle standalone 2D/3D assets
+                    const consumedNames = new Set(tempSets.flatMap(s => [s.jsonName, ...s.pngBlobs.keys()]));
+                    const standaloneAssets = files.filter(f => {
+                        if (consumedNames.has(f.name)) return false;
+                        const n = f.name.toLowerCase();
+                        return n.endsWith('.png') || n.endsWith('.jpg') || n.endsWith('.webp') ||
+                               n.endsWith('.glb') || n.endsWith('.gltf') || n.endsWith('.fbx') || n.endsWith('.obj');
+                    });
+                    for (const f of standaloneAssets) {
+                        const is3D = !!f.name.match(/\.(glb|gltf|fbx|obj)$/i);
+                        tempSets.push({
+                            assetType: is3D ? '3d' : '2d',
+                            mimeType: f.type || (is3D ? 'model/gltf-binary' : 'image/png'),
+                            fileBlob: f,
+                            jsonText: '', atlasText: '',
+                            pngBlobs: new Map(),
+                            jsonName: f.name,
+                            majorVersion: 0, minorVersion: 0,
+                        });
+                    }
+                    if (tempSets.length === 0) return;
+                    // Show import dialog → save to library
+                    const importItems = await prepareImportItems(tempSets);
+                    const result = await showImportDialog(importItems);
+                    if (!result) return;
+                    for (const item of result.selectedItems) {
+                        const skelSet = tempSets.find(s => s.jsonName === item.jsonName);
+                        if (!skelSet) continue;
+                        try {
+                            if (skelSet.assetType === '2d' || skelSet.assetType === '3d') {
+                                await saveCharacter({
+                                    assetType: skelSet.assetType, mimeType: skelSet.mimeType,
+                                    name: item.name, jsonName: item.jsonName,
+                                    spineVersion: 'N/A', majorVersion: 0, minorVersion: 0,
+                                    jsonBlob: skelSet.fileBlob!, atlasBlob: new Blob(),
+                                    pngBlobs: [], jsonText: '', atlasText: '',
+                                    boneCount: 0, slotCount: 0, animCount: 0, animNames: [], skinCount: 0,
+                                    fileSize: skelSet.fileBlob!.size, jsonSize: skelSet.fileBlob!.size,
+                                    atlasSize: 0, pngSizes: [], thumbnail: null,
+                                    projectId: result.projectId, notes: result.note || '', tags: result.customTags,
+                                });
+                            } else {
+                                const jsonBlob = new Blob([skelSet.jsonText], { type: 'application/json' });
+                                const atlasBlob = new Blob([skelSet.atlasText], { type: 'text/plain' });
+                                const pngBlobs: { name: string; blob: Blob }[] = [];
+                                const pngSizes: { name: string; size: number }[] = [];
+                                for (const [pngName, pngBlobVal] of skelSet.pngBlobs) {
+                                    pngBlobs.push({ name: pngName, blob: pngBlobVal });
+                                    pngSizes.push({ name: pngName, size: pngBlobVal.size });
+                                }
+                                let totalSize = jsonBlob.size + atlasBlob.size;
+                                for (const p of pngBlobs) totalSize += p.blob.size;
+                                await saveCharacter({
+                                    assetType: 'spine', name: item.name, jsonName: item.jsonName,
+                                    spineVersion: skelSet.majorVersion + '.' + skelSet.minorVersion,
+                                    majorVersion: skelSet.majorVersion, minorVersion: skelSet.minorVersion,
+                                    jsonBlob, atlasBlob, pngBlobs,
+                                    jsonText: skelSet.jsonText, atlasText: skelSet.atlasText,
+                                    boneCount: item.boneCount, slotCount: item.slotCount,
+                                    animCount: item.animCount, animNames: item.animNames || [],
+                                    skinCount: item.skinCount, fileSize: totalSize,
+                                    jsonSize: jsonBlob.size, atlasSize: atlasBlob.size, pngSizes,
+                                    thumbnail: null, projectId: result.projectId,
+                                    notes: result.note || '', tags: result.customTags,
+                                });
+                            }
+                        } catch (e) { console.warn('[IMPORT] Failed:', item.jsonName, e); }
+                    }
+                    renderLibrary();
                 }
             });
             input.click();
@@ -142,13 +223,29 @@ function setupDropZone() {
 
 // ── Smart file handling ────────────────────────────────────────
 
+// Phase 3: Formal app mode enum
+type AppMode =
+    | 'empty'              // No file loaded, drop zone active
+    | 'preview-single'     // Preview: single animation playback (from file drop)
+    | 'preview-anim-grid'  // Preview: all animations grid
+    | 'preview-char-grid'  // Preview: multi-skeleton grid
+    | 'library-browse'     // Library: browsing cards (no viewer)
+    | 'library-inspect'    // Library: card selected, embedded viewer active
+    | 'library-fullview';  // Library: full-screen viewer from library load
+
+let appMode: AppMode = 'empty';
+let isFromLibrary = false; // Phase 2D: true when loaded from library, false from file drop
+let loadGeneration = 0;    // Phase 1C: guard against concurrent loadSpine calls
+
 // Store all folder files for switching between character sets
 let folderFiles: File[] = [];
 let currentGridData: GridSpineData | null = null;
-let gridMode = false;
 let allSkeletonSets: GridSpineData[] = [];
-let multiSkeletonMode = false;
-let animGridActive = false; // true = animation grid, false = multi-skeleton grid
+
+// Legacy flags — derived from appMode for backward compat during transition
+function get_gridMode() { return appMode === 'preview-anim-grid' || appMode === 'preview-char-grid'; }
+function get_animGridActive() { return appMode === 'preview-anim-grid'; }
+function get_multiSkeletonMode() { return appMode === 'preview-char-grid'; }
 
 // Per-animation state: stores viewer state for each animation separately
 const perAnimState = new Map<string, AnimViewState>();
@@ -157,6 +254,22 @@ let currentAnimName: string | null = null;
 // Per-character BG storage: save/restore BG image when switching characters
 const perCharBgImage = new Map<string, HTMLImageElement | null>();
 let currentCharName: string | null = null;
+
+// Phase 2C: Update mode badge in header
+function updateModeBadge() {
+    const badge = document.getElementById('mode-badge');
+    if (!badge) return;
+    if (isFromLibrary) {
+        badge.textContent = 'LIBRARY';
+        badge.className = 'badge mode-library';
+    } else if (appMode === 'empty') {
+        badge.textContent = '';
+        badge.className = 'badge hidden';
+    } else {
+        badge.textContent = 'PREVIEW';
+        badge.className = 'badge mode-preview';
+    }
+}
 
 function saveCharBg() {
     if (currentCharName) {
@@ -172,6 +285,8 @@ function restoreCharBg(charName: string) {
 
 /** Lazy thumbnail capture: wait frames for render to stabilize, capture, update DB */
 function scheduleThumbnailCapture(jsonName: string) {
+    // Phase 2D: Only capture thumbnails when loaded from library
+    if (!isFromLibrary) return;
     let framesLeft = 15;
     function onFrame() {
         if (--framesLeft > 0) { requestAnimationFrame(onFrame); return; }
@@ -270,96 +385,10 @@ async function handleFiles(files: File[]) {
         return;
     }
 
-    // ── Show import dialog — let user choose which to save + assign project ──
-    const importItems = await prepareImportItems(allSkeletonSets);
-    // Fire-and-forget: show dialog without blocking viewer load
-    showImportDialog(importItems).then(async (result) => {
-        if (!result) {
-            console.log('[LIBRARY] Import skipped by user');
-            return;
-        }
-        // Save selected characters
-        for (const item of result.selectedItems) {
-            const skelSet = allSkeletonSets.find(s => s.jsonName === item.jsonName);
-            if (!skelSet) continue;
-            try {
-                if (skelSet.assetType === '2d' || skelSet.assetType === '3d') {
-                    // Save as Generic Asset
-                    await saveCharacter({
-                        assetType: skelSet.assetType,
-                        mimeType: skelSet.mimeType,
-                        name: item.name,
-                        jsonName: item.jsonName,
-                        spineVersion: 'N/A',
-                        majorVersion: 0,
-                        minorVersion: 0,
-                        jsonBlob: skelSet.fileBlob!, // reuse jsonBlob for primary file
-                        atlasBlob: new Blob(),
-                        pngBlobs: [],
-                        jsonText: '',
-                        atlasText: '',
-                        boneCount: 0,
-                        slotCount: 0,
-                        animCount: 0,
-                        animNames: [],
-                        skinCount: 0,
-                        fileSize: skelSet.fileBlob!.size,
-                        jsonSize: skelSet.fileBlob!.size,
-                        atlasSize: 0,
-                        pngSizes: [],
-                        thumbnail: null,
-                        projectId: result.projectId,
-                        notes: result.note || '',
-                        tags: result.customTags,
-                    });
-                } else {
-                    const jsonBlob = new Blob([skelSet.jsonText], { type: 'application/json' });
-                    const atlasBlob = new Blob([skelSet.atlasText], { type: 'text/plain' });
-                    const pngBlobs: { name: string; blob: Blob }[] = [];
-                    const pngSizes: { name: string; size: number }[] = [];
-                    for (const [pngName, pngBlobVal] of skelSet.pngBlobs) {
-                        pngBlobs.push({ name: pngName, blob: pngBlobVal });
-                        pngSizes.push({ name: pngName, size: pngBlobVal.size });
-                    }
-                    let totalSize = jsonBlob.size + atlasBlob.size;
-                    for (const p of pngBlobs) totalSize += p.blob.size;
-                    await saveCharacter({
-                        assetType: 'spine',
-                        name: item.name,
-                        jsonName: item.jsonName,
-                        spineVersion: skelSet.majorVersion + '.' + skelSet.minorVersion,
-                        majorVersion: skelSet.majorVersion,
-                        minorVersion: skelSet.minorVersion,
-                        jsonBlob, atlasBlob, pngBlobs,
-                        jsonText: skelSet.jsonText,
-                        atlasText: skelSet.atlasText,
-                        boneCount: item.boneCount,
-                        slotCount: item.slotCount,
-                        animCount: item.animCount,
-                        animNames: item.animNames || [],
-                        skinCount: item.skinCount,
-                        fileSize: totalSize,
-                        jsonSize: jsonBlob.size,
-                        atlasSize: atlasBlob.size,
-                        pngSizes,
-                        thumbnail: null,
-                        projectId: result.projectId,
-                        notes: result.note || '',
-                        tags: result.customTags,
-                    });
-                }
-                console.log('[LIBRARY] Saved:', item.jsonName, 'to project:', result.projectId, 'note:', result.note);
-            } catch (e) {
-                console.warn('[LIBRARY] Failed to save:', item.jsonName, e);
-            }
-        }
-        renderLibrary();
-    });
-
-    if (allSkeletonSets.length === 0) {
-        showError('Could not prepare any skeleton sets.');
-        return;
-    }
+    // Phase 2A: Drop files = pure preview, NO auto-import dialog
+    // User can explicitly click "Add to Library" button to save to DB
+    isFromLibrary = false;
+    currentLibraryChar = null;
 
     // If multiple skeletons → auto enter multi-skeleton grid mode (NO single load first)
     if (allSkeletonSets.length > 1) {
@@ -387,37 +416,47 @@ async function handleFiles(files: File[]) {
 
             // "All" selected → enter grid mode
             if (selectedName === '__all__') {
-                if (!gridMode || animGridActive) {
-                    if (gridMode) { destroyGridView(); gridMode = false; }
+                if (!get_gridMode() || get_animGridActive()) {
+                    if (get_gridMode()) { destroyGridView(); }
                     enterMultiSkeletonGrid();
                 }
+                showMultiPreviewProperties(allSkeletonSets);
                 return;
             }
 
             // Specific character selected → enter single mode
             const skeletonName = selectedName.replace(/\.(json|skel)$/i, '');
 
-            if (gridMode && !animGridActive) {
+            if (get_gridMode() && !get_animGridActive()) {
                 // Currently in character grid → exit to single
                 saveCharBg();
                 exitMultiSkeletonGrid(skeletonName);
-            } else if (gridMode && animGridActive) {
+            } else if (get_gridMode() && get_animGridActive()) {
                 // Currently in animation grid → load new character, KEEP animation ALL mode
                 saveCharBg();
                 destroyGridView();
-                gridMode = false;
-                animGridActive = false;
+                appMode = 'preview-single';
                 $('pixi-container').style.display = '';
                 const data = allSkeletonSets.find(d =>
                     d.jsonName.replace(/\.(json|skel)$/i, '') === skeletonName
                 );
                 if (data) {
                     currentGridData = data;
+                    // Phase 1D: clear state BEFORE load
+                    perAnimState.clear();
+                    const gen = ++loadGeneration;
                     const spineFiles = { jsonText: data.jsonText, atlasText: data.atlasText, pngBlobs: data.pngBlobs, jsonName: data.jsonName };
-                    await loadSpine(spineFiles, data.majorVersion, data.minorVersion);
+                    try {
+                        await loadSpine(spineFiles, data.majorVersion, data.minorVersion);
+                        if (gen !== loadGeneration) return; // Phase 1C: stale
+                    } catch (e) {
+                        console.error('[CHAR-SWITCH] Load error:', e);
+                        appMode = 'empty';
+                        updateModeBadge();
+                        return;
+                    }
                     populateControls();
                     resetControlsToDefaults();
-                    perAnimState.clear();
 
                     $<HTMLSelectElement>('char-select').value = data.jsonName;
                     const version = detectVersion(data.jsonText);
@@ -427,6 +466,7 @@ async function handleFiles(files: File[]) {
                     // Re-enter animation ALL mode for the new character
                     restoreCharBg(skeletonName);
                     enterGridMode();
+                    showPreviewProperties(data);
                 }
             } else {
                 // Already in single mode — just switch character
@@ -450,18 +490,42 @@ async function handleFiles(files: File[]) {
         // Show controls but hide drop zone
         $('drop-zone').classList.remove('active');
         $('controls').classList.remove('hidden');
+        document.getElementById('preview-empty-hint')?.classList.add('hidden');
+        // Show "Add to Library" button for preview mode
+        const btnAddLib = document.getElementById('btn-add-library');
+        if (btnAddLib) btnAddLib.style.display = '';
 
         // Auto-enter multi-skeleton grid DIRECTLY (no single view first)
-        multiSkeletonMode = true;
         await enterMultiSkeletonGrid();
-    } else {
+        updateModeBadge();
+        // Show properties for all loaded assets
+        showMultiPreviewProperties(allSkeletonSets);
+    } else if (jsonFiles.length === 1) {
         document.getElementById('char-section')!.style.display = 'none';
-        multiSkeletonMode = false;
         // Single skeleton: load into viewer then show animation grid
         await loadSpineSet(jsonFiles[0], files);
         enterGridMode();
-        // Capture thumbnail for single skeleton
+        // Show "Add to Library" button for preview mode
+        const btnAddLib = document.getElementById('btn-add-library');
+        if (btnAddLib) btnAddLib.style.display = '';
+        updateModeBadge();
+        // Show properties for loaded asset
+        showPreviewProperties(allSkeletonSets[0]);
         scheduleThumbnailCapture(jsonFiles[0].name);
+    } else if (allSkeletonSets.length > 0) {
+        // Only standalone assets (2D/3D), no spine files
+        document.getElementById('char-section')!.style.display = 'none';
+        // Show "Add to Library" button
+        const btnAddLib = document.getElementById('btn-add-library');
+        if (btnAddLib) btnAddLib.style.display = '';
+        appMode = 'preview-single';
+        updateModeBadge();
+        // Show properties
+        if (allSkeletonSets.length === 1) {
+            showPreviewProperties(allSkeletonSets[0]);
+        } else {
+            showMultiPreviewProperties(allSkeletonSets);
+        }
     }
 }
 
@@ -494,8 +558,7 @@ function updateAnimButtons(mode: 'grid' | 'single') {
 }
 
 async function enterMultiSkeletonGrid() {
-    gridMode = true;
-    animGridActive = false;
+    appMode = 'preview-char-grid';
     updateCharButtons('grid');
 
     $('pixi-container').style.display = 'none';
@@ -759,12 +822,13 @@ async function loadSpineSet(jsonFile: File, allFiles: File[]) {
         };
 
         // Reset grid mode
-        if (gridMode) {
+        if (get_gridMode()) {
             exitGridMode();
         }
 
         $('drop-zone').classList.remove('active');
         $('controls').classList.remove('hidden');
+        document.getElementById('preview-empty-hint')?.classList.add('hidden');
 
         populateControls();
 
@@ -780,6 +844,121 @@ async function loadSpineSet(jsonFile: File, allFiles: File[]) {
     }
 }
 
+
+// ── Preview Properties Panel (shows asset info when viewing from file drop) ──
+function showPreviewProperties(data: GridSpineData) {
+    const propsEmpty = document.getElementById('props-empty');
+    const propsContent = document.getElementById('props-content');
+    if (!propsEmpty || !propsContent) return;
+
+    propsEmpty.style.display = 'none';
+    propsContent.style.display = 'flex';
+
+    const baseName = data.jsonName.replace(/\.(json|skel)$/i, '');
+    let boneCount = 0, slotCount = 0, animCount = 0, skinCount = 0, fileSize = 0;
+    let animNames: string[] = [];
+    try {
+        if (data.jsonText) {
+            const json = JSON.parse(data.jsonText);
+            boneCount = json.bones?.length || 0;
+            slotCount = json.slots?.length || 0;
+            animNames = Object.keys(json.animations || {});
+            animCount = animNames.length;
+            const skins = json.skins;
+            skinCount = Array.isArray(skins) ? skins.length : Object.keys(skins || {}).length;
+        }
+    } catch { }
+
+    fileSize = new Blob([data.jsonText]).size + new Blob([data.atlasText]).size;
+    for (const [, blob] of data.pngBlobs) fileSize += blob.size;
+
+    const versionStr = data.majorVersion > 0 ? `v${data.majorVersion}.${data.minorVersion}` : (data.assetType || 'unknown').toUpperCase();
+    const typeLabel = data.assetType === '2d' ? '2D Image' : data.assetType === '3d' ? '3D Model' : 'Spine';
+
+    propsContent.innerHTML = `
+        <div class="props-header" style="display:flex;align-items:center;gap:6px;padding:12px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);border-bottom:1px solid var(--border);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            Preview Info
+        </div>
+        <div class="props-body" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;">
+            <div style="font-size:14px;font-weight:700;color:var(--text);word-break:break-all;">${baseName}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <span class="badge" style="font-size:10px;padding:2px 8px;">${typeLabel}</span>
+                <span class="badge" style="font-size:10px;padding:2px 8px;background:var(--panel2);">${versionStr}</span>
+                <span class="badge mode-preview" style="font-size:10px;padding:2px 8px;">PREVIEW</span>
+            </div>
+            ${data.assetType !== '2d' && data.assetType !== '3d' ? `
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
+                <div class="props-meta-row"><span>Bones</span> <span style="font-family:var(--mono);">${boneCount}</span></div>
+                <div class="props-meta-row"><span>Slots</span> <span style="font-family:var(--mono);">${slotCount}</span></div>
+                <div class="props-meta-row"><span>Animations</span> <span style="font-family:var(--mono);">${animCount}</span></div>
+                <div class="props-meta-row"><span>Skins</span> <span style="font-family:var(--mono);">${skinCount}</span></div>
+                <div class="props-meta-row"><span>Total Size</span> <span style="font-family:var(--mono);">${(fileSize / 1024).toFixed(1)} KB</span></div>
+            </div>
+            ${animNames.length > 0 ? `
+            <div style="margin-top:8px;">
+                <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:6px;">Animations</div>
+                <div style="display:flex;flex-direction:column;gap:2px;max-height:200px;overflow-y:auto;">
+                    ${animNames.map(a => `<div style="font-size:11px;font-family:var(--mono);color:var(--text);padding:3px 6px;background:rgba(255,255,255,0.03);border-radius:4px;">${a}</div>`).join('')}
+                </div>
+            </div>
+            ` : ''}
+            ` : `
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
+                <div class="props-meta-row"><span>File</span> <span style="font-family:var(--mono);">${data.jsonName}</span></div>
+                <div class="props-meta-row"><span>Size</span> <span style="font-family:var(--mono);">${((data.fileBlob?.size || fileSize) / 1024).toFixed(1)} KB</span></div>
+            </div>
+            `}
+            <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);font-size:11px;color:var(--dim);text-align:center;">
+                File chỉ đang xem preview<br>Click "+ Add to Library" để lưu
+            </div>
+        </div>
+    `;
+}
+
+// Show properties for multiple assets in preview
+function showMultiPreviewProperties(dataSets: GridSpineData[]) {
+    const propsEmpty = document.getElementById('props-empty');
+    const propsContent = document.getElementById('props-content');
+    if (!propsEmpty || !propsContent) return;
+
+    propsEmpty.style.display = 'none';
+    propsContent.style.display = 'flex';
+
+    let totalSize = 0;
+    for (const data of dataSets) {
+        totalSize += new Blob([data.jsonText]).size + new Blob([data.atlasText]).size;
+        for (const [, blob] of data.pngBlobs) totalSize += blob.size;
+        if (data.fileBlob) totalSize += data.fileBlob.size;
+    }
+
+    propsContent.innerHTML = `
+        <div class="props-header" style="display:flex;align-items:center;gap:6px;padding:12px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);border-bottom:1px solid var(--border);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            Preview Info
+        </div>
+        <div class="props-body" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;">
+            <div style="font-size:14px;font-weight:700;color:var(--text);">${dataSets.length} Assets Loaded</div>
+            <div style="display:flex;gap:6px;">
+                <span class="badge mode-preview" style="font-size:10px;padding:2px 8px;">PREVIEW</span>
+                <span class="badge" style="font-size:10px;padding:2px 8px;background:var(--panel2);">${(totalSize / 1024).toFixed(0)} KB total</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:300px;overflow-y:auto;">
+                ${dataSets.map(d => {
+                    const name = d.jsonName.replace(/\.(json|skel|png|jpg|webp|glb|gltf|fbx|obj)$/i, '');
+                    const type = d.assetType === '2d' ? '2D' : d.assetType === '3d' ? '3D' : `Spine ${d.majorVersion}.${d.minorVersion}`;
+                    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.03);border-radius:6px;">
+                        <span style="font-size:12px;color:var(--text);font-weight:500;">${name}</span>
+                        <span style="font-size:10px;color:var(--dim);font-family:var(--mono);">${type}</span>
+                    </div>`;
+                }).join('')}
+            </div>
+            <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);font-size:11px;color:var(--dim);text-align:center;">
+                Đang xem preview<br>Click "+ Add to Library" để lưu
+            </div>
+        </div>
+    `;
+}
 
 // ── Populate UI controls ───────────────────────────────────────
 function populateControls() {
@@ -824,10 +1003,14 @@ function populateControls() {
 
     // Info
     const info = getSkeletonInfo();
-    $('info-bones').textContent = String(info.bones);
-    $('info-slots').textContent = String(info.slots);
-    $('info-anims').textContent = String(info.anims);
-    $('info-skins').textContent = String(info.skins);
+    const ib = document.getElementById('info-bones');
+    const is = document.getElementById('info-slots');
+    const ia = document.getElementById('info-anims');
+    const ik = document.getElementById('info-skins');
+    if (ib) ib.textContent = String(info.bones);
+    if (is) is.textContent = String(info.slots);
+    if (ia) ia.textContent = String(info.anims);
+    if (ik) ik.textContent = String(info.skins);
 }
 
 // ── Reset controls to defaults ─────────────────────────────────
@@ -856,7 +1039,7 @@ function setupControls() {
 
         // "All" selected → enter animation grid mode
         if (animName === '__all__') {
-            if (!gridMode || !animGridActive) {
+            if (!get_gridMode() || !get_animGridActive()) {
                 saveCurrentAnimState();
                 enterGridMode();
             }
@@ -864,7 +1047,7 @@ function setupControls() {
         }
 
         // Specific animation selected
-        if (gridMode && animGridActive) {
+        if (get_gridMode() && get_animGridActive()) {
             // Currently in animation grid → exit to single with selected anim
             exitGridMode(animName);
             return;
@@ -888,13 +1071,13 @@ function setupControls() {
     // Play/Pause
     $('btn-play').addEventListener('click', () => {
         setPlaying(true);
-        if (gridMode) setGridPlaying(true);
+        if (get_gridMode()) setGridPlaying(true);
         $('btn-play').classList.add('active');
         $('btn-pause').classList.remove('active');
     });
     $('btn-pause').addEventListener('click', () => {
         setPlaying(false);
-        if (gridMode) setGridPlaying(false);
+        if (get_gridMode()) setGridPlaying(false);
         $('btn-pause').classList.add('active');
         $('btn-play').classList.remove('active');
     });
@@ -913,7 +1096,7 @@ function setupControls() {
         setSpeed(val);
         $('speed-val').textContent = val.toFixed(1) + 'x';
         // Broadcast to grid if active
-        if (gridMode) setGridSpeed(val);
+        if (get_gridMode()) setGridSpeed(val);
     });
 
     // Scale
@@ -923,14 +1106,14 @@ function setupControls() {
         setScale(val);
         $('scale-val').textContent = val.toFixed(1) + 'x';
         // Broadcast to grid if active
-        if (gridMode) setGridScale(val);
+        if (get_gridMode()) setGridScale(val);
     });
 
     // Skin
     $<HTMLSelectElement>('skin-select').addEventListener('change', (e) => {
         const skinVal = (e.target as HTMLSelectElement).value;
         setSkin(skinVal);
-        if (gridMode) setGridSkin(skinVal);
+        if (get_gridMode()) setGridSkin(skinVal);
     });
 
     // Background image upload
@@ -944,7 +1127,7 @@ function setupControls() {
             const img = new Image();
             img.onload = () => {
                 setBgImage(img);
-                if (gridMode) setGridBgImage(img);
+                if (get_gridMode()) setGridBgImage(img);
             };
             img.src = URL.createObjectURL(file);
         }
@@ -952,8 +1135,89 @@ function setupControls() {
     document.getElementById('btn-bg-clear')?.addEventListener('click', () => {
         setBgImage(null);
         bgFileInput.value = '';
-        if (gridMode) setGridBgImage(null);
+        if (get_gridMode()) setGridBgImage(null);
     });
+
+    // Phase 2B: "Add to Library" button
+    const btnAddLibrary = document.getElementById('btn-add-library');
+    if (btnAddLibrary) {
+        btnAddLibrary.addEventListener('click', async () => {
+            if (allSkeletonSets.length === 0) return;
+            const importItems = await prepareImportItems(allSkeletonSets);
+            const result = await showImportDialog(importItems);
+            if (!result) {
+                console.log('[LIBRARY] Import skipped by user');
+                return;
+            }
+            for (const item of result.selectedItems) {
+                const skelSet = allSkeletonSets.find(s => s.jsonName === item.jsonName);
+                if (!skelSet) continue;
+                try {
+                    if (skelSet.assetType === '2d' || skelSet.assetType === '3d') {
+                        await saveCharacter({
+                            assetType: skelSet.assetType,
+                            mimeType: skelSet.mimeType,
+                            name: item.name,
+                            jsonName: item.jsonName,
+                            spineVersion: 'N/A',
+                            majorVersion: 0, minorVersion: 0,
+                            jsonBlob: skelSet.fileBlob!,
+                            atlasBlob: new Blob(),
+                            pngBlobs: [],
+                            jsonText: '', atlasText: '',
+                            boneCount: 0, slotCount: 0, animCount: 0, animNames: [], skinCount: 0,
+                            fileSize: skelSet.fileBlob!.size,
+                            jsonSize: skelSet.fileBlob!.size,
+                            atlasSize: 0, pngSizes: [],
+                            thumbnail: null,
+                            projectId: result.projectId,
+                            notes: result.note || '',
+                            tags: result.customTags,
+                        });
+                    } else {
+                        const jsonBlob = new Blob([skelSet.jsonText], { type: 'application/json' });
+                        const atlasBlob = new Blob([skelSet.atlasText], { type: 'text/plain' });
+                        const pngBlobs: { name: string; blob: Blob }[] = [];
+                        const pngSizes: { name: string; size: number }[] = [];
+                        for (const [pngName, pngBlobVal] of skelSet.pngBlobs) {
+                            pngBlobs.push({ name: pngName, blob: pngBlobVal });
+                            pngSizes.push({ name: pngName, size: pngBlobVal.size });
+                        }
+                        let totalSize = jsonBlob.size + atlasBlob.size;
+                        for (const p of pngBlobs) totalSize += p.blob.size;
+                        await saveCharacter({
+                            assetType: 'spine',
+                            name: item.name,
+                            jsonName: item.jsonName,
+                            spineVersion: skelSet.majorVersion + '.' + skelSet.minorVersion,
+                            majorVersion: skelSet.majorVersion,
+                            minorVersion: skelSet.minorVersion,
+                            jsonBlob, atlasBlob, pngBlobs,
+                            jsonText: skelSet.jsonText,
+                            atlasText: skelSet.atlasText,
+                            boneCount: item.boneCount, slotCount: item.slotCount,
+                            animCount: item.animCount, animNames: item.animNames || [],
+                            skinCount: item.skinCount,
+                            fileSize: totalSize,
+                            jsonSize: jsonBlob.size, atlasSize: atlasBlob.size, pngSizes,
+                            thumbnail: null,
+                            projectId: result.projectId,
+                            notes: result.note || '',
+                            tags: result.customTags,
+                        });
+                    }
+                    console.log('[LIBRARY] Saved:', item.jsonName);
+                } catch (e) {
+                    console.warn('[LIBRARY] Failed to save:', item.jsonName, e);
+                }
+            }
+            renderLibrary();
+            // Switch to library mode after saving
+            isFromLibrary = true;
+            updateModeBadge();
+            btnAddLibrary.style.display = 'none';
+        });
+    }
 
     // Mouse drag to pan
     const canvasWrap = $('canvas-wrap');
@@ -1069,6 +1333,13 @@ function main() {
         initViewer();
         setupDropZone();
         setupControls();
+        // Initialize auth UI (only shows login when Supabase is configured)
+        if (isSupabaseConfigured()) {
+            initAuthUI();
+            debugLog('[INIT] Supabase auth initialized');
+        } else {
+            debugLog('[INIT] Local mode (no Supabase)');
+        }
         debugLog('[INIT] Spine Viewer ready');
     } catch (e: any) {
         showError(`Init failed: ${e.message}\n${e.stack}`);
@@ -1080,8 +1351,7 @@ main();
 // ── Grid View ──────────────────────────────────────────────────
 function enterGridMode() {
     if (!currentGridData) return;
-    gridMode = true;
-    animGridActive = true;
+    appMode = isFromLibrary ? 'library-fullview' : 'preview-anim-grid';
     updateAnimButtons('grid');
 
     $('pixi-container').style.display = 'none';
@@ -1089,12 +1359,14 @@ function enterGridMode() {
     $<HTMLSelectElement>('anim-select').value = '__all__';
     saveCurrentAnimState();
     setGridPlaying(true); // Ensure playback is active on grid entry
+    // Phase 4A: Sync Play/Pause buttons with grid state
+    $('btn-play').classList.add('active');
+    $('btn-pause').classList.remove('active');
     initGridView({ ...currentGridData, bgImage: getBgImage(), viewerState: getViewerState(), perAnimState: Object.fromEntries(perAnimState) });
 }
 
 function exitGridMode(selectedAnim?: string) {
-    gridMode = false;
-    animGridActive = false;
+    appMode = isFromLibrary ? 'library-fullview' : 'preview-single';
     updateAnimButtons('single');
 
     const overrides = getGridOverrides();
@@ -1112,7 +1384,9 @@ function exitGridMode(selectedAnim?: string) {
 
     if (currentGridData) {
         const { jsonText, atlasText, pngBlobs, jsonName, majorVersion, minorVersion } = currentGridData;
+        const gen = ++loadGeneration;
         loadSpine({ jsonText, atlasText, pngBlobs, jsonName }, majorVersion, minorVersion).then(() => {
+            if (gen !== loadGeneration) return; // Phase 1C: discard stale
             populateControls();
             const anim = selectedAnim || anims[0];
             if (anim) {
@@ -1128,6 +1402,8 @@ function exitGridMode(selectedAnim?: string) {
                     $('scale-val').textContent = pas.scale.toFixed(1) + 'x';
                 } else { resetControlsToDefaults(); }
             } else { resetControlsToDefaults(); }
+        }).catch(e => {
+            console.error('[EXIT-GRID] Load error:', e);
         });
     }
 }
@@ -1136,30 +1412,33 @@ function exitGridMode(selectedAnim?: string) {
 
 // Character: Grid → show all skeletons
 $('btn-char-grid').addEventListener('click', () => {
-    if (gridMode && !animGridActive) return; // already in char grid
-    if (gridMode) { destroyGridView(); gridMode = false; }
+    if (appMode === 'preview-char-grid') return; // already in char grid
+    if (get_gridMode()) { destroyGridView(); }
     enterMultiSkeletonGrid();
 });
 
 // Character: Single → show single skeleton
 $('btn-char-single').addEventListener('click', () => {
-    if (gridMode && !animGridActive) {
+    if (appMode === 'preview-char-grid') {
         exitMultiSkeletonGrid();
     }
 });
 
 // Animation: All → show all animations
 $('btn-anim-grid').addEventListener('click', () => {
-    if (gridMode && animGridActive) return; // already in anim grid
-    if (gridMode && !animGridActive) {
-        destroyGridView(); gridMode = false;
+    if (appMode === 'preview-anim-grid') return; // already in anim grid
+    if (appMode === 'preview-char-grid') {
+        destroyGridView();
+        appMode = 'preview-single';
         // Load current skeleton first, then enter anim grid
         if (currentGridData) {
             const { jsonText, atlasText, pngBlobs, jsonName, majorVersion, minorVersion } = currentGridData;
+            const gen = ++loadGeneration;
             loadSpine({ jsonText, atlasText, pngBlobs, jsonName }, majorVersion, minorVersion).then(() => {
+                if (gen !== loadGeneration) return;
                 populateControls();
                 enterGridMode();
-            });
+            }).catch(e => console.error('[ANIM-GRID] Load error:', e));
             return;
         }
     }
@@ -1168,13 +1447,13 @@ $('btn-anim-grid').addEventListener('click', () => {
 
 // Animation: Single → show single animation
 $('btn-anim-single').addEventListener('click', () => {
-    if (!gridMode) return; // already in single
-    if (animGridActive) exitGridMode();
+    if (!get_gridMode()) return; // already in single
+    if (get_animGridActive()) exitGridMode();
 });
 
 // Grid cell click → switch to single view
 setOnAnimationClick((animName: string) => {
-    if (animGridActive) {
+    if (get_animGridActive()) {
         exitGridMode(animName);
     } else {
         exitMultiSkeletonGrid(animName);
@@ -1182,7 +1461,7 @@ setOnAnimationClick((animName: string) => {
 });
 
 function exitMultiSkeletonGrid(skeletonName?: string) {
-    gridMode = false;
+    appMode = 'preview-single';
     updateCharButtons('single');
     destroyGridView();
 
@@ -1198,11 +1477,13 @@ function exitMultiSkeletonGrid(skeletonName?: string) {
         );
         if (data) {
             currentGridData = data;
+            perAnimState.clear(); // Phase 1D: clear BEFORE load
+            const gen = ++loadGeneration;
             const spineFiles = { jsonText: data.jsonText, atlasText: data.atlasText, pngBlobs: data.pngBlobs, jsonName: data.jsonName };
             loadSpine(spineFiles, data.majorVersion, data.minorVersion).then(() => {
+                if (gen !== loadGeneration) return; // Phase 1C: stale
                 populateControls();
                 resetControlsToDefaults();
-                perAnimState.clear();
 
                 $<HTMLSelectElement>('char-select').value = data.jsonName;
                 const version = detectVersion(data.jsonText);
@@ -1212,19 +1493,25 @@ function exitMultiSkeletonGrid(skeletonName?: string) {
                 // Default to Animation ALL mode
                 restoreCharBg(skeletonName!);
                 enterGridMode();
-                // Capture thumbnail when entering single character view
                 scheduleThumbnailCapture(data.jsonName);
+            }).catch(e => {
+                console.error('[EXIT-MULTI-GRID] Load error:', e);
+                appMode = 'empty';
+                updateModeBadge();
             });
         }
     } else {
         if (currentGridData) {
             const { jsonText, atlasText, pngBlobs, jsonName, majorVersion, minorVersion } = currentGridData;
+            const gen = ++loadGeneration;
             loadSpine({ jsonText, atlasText, pngBlobs, jsonName }, majorVersion, minorVersion).then(() => {
+                if (gen !== loadGeneration) return;
                 populateControls();
                 // Default to Animation ALL mode
                 enterGridMode();
-                // Capture thumbnail
                 scheduleThumbnailCapture(jsonName);
+            }).catch(e => {
+                console.error('[EXIT-MULTI-GRID] Load error:', e);
             });
         }
     }
@@ -1232,7 +1519,7 @@ function exitMultiSkeletonGrid(skeletonName?: string) {
 
 // Double-click canvas → enter animation grid
 $('pixi-container').addEventListener('dblclick', () => {
-    if (!gridMode && currentGridData) enterGridMode();
+    if (!get_gridMode() && currentGridData) enterGridMode();
 });
 
 
@@ -1291,12 +1578,16 @@ mixSlider?.addEventListener('input', () => {
 async function internalLoadFromLibrary(char: SpineCharacter, isEmbedded: boolean, embedContainer?: HTMLElement) {
     console.log('[LIBRARY] Loading from library (embedded:' + isEmbedded + '):', char.name, 'id:', char.id, 'jsonName:', char.jsonName);
     currentLibraryChar = char;
+    isFromLibrary = true; // Phase 2D
+    appMode = isEmbedded ? 'library-inspect' : 'library-fullview';
+    updateModeBadge();
+    // Hide "Add to Library" button when in library mode
+    const btnAddLib = document.getElementById('btn-add-library');
+    if (btnAddLib) btnAddLib.style.display = 'none';
 
     // ── Clean up existing state before loading ──
-    if (gridMode) {
+    if (get_gridMode()) {
         destroyGridView();
-        gridMode = false;
-        animGridActive = false;
     }
     perAnimState.clear();
     currentAnimName = null;
@@ -1323,6 +1614,7 @@ async function internalLoadFromLibrary(char: SpineCharacter, isEmbedded: boolean
     }
 
     if (assetContainer) assetContainer.style.display = 'none';
+    document.getElementById('preview-empty-hint')?.classList.add('hidden');
     
     // Restore controls panel (may have been hidden by 2D/3D asset view)
     const ctrlPanelRestore = document.getElementById('controls');
@@ -1410,10 +1702,14 @@ async function internalLoadFromLibrary(char: SpineCharacter, isEmbedded: boolean
 
         const info = getSkeletonInfo();
         if (info) {
-            document.getElementById('info-bones')!.textContent = String(info.bones);
-            document.getElementById('info-slots')!.textContent = String(info.slots);
-            document.getElementById('info-anims')!.textContent = String(info.anims);
-            document.getElementById('info-skins')!.textContent = String(info.skins);
+            const ib2 = document.getElementById('info-bones');
+            const is2 = document.getElementById('info-slots');
+            const ia2 = document.getElementById('info-anims');
+            const ik2 = document.getElementById('info-skins');
+            if (ib2) ib2.textContent = String(info.bones);
+            if (is2) is2.textContent = String(info.slots);
+            if (ia2) ia2.textContent = String(info.anims);
+            if (ik2) ik2.textContent = String(info.skins);
         }
 
         initMetaConfig({

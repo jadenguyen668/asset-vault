@@ -1,8 +1,24 @@
 /**
- * Spine Asset Library — IndexedDB Storage (Dexie.js)
- * Add-on module: does NOT affect existing viewer functionality.
+ * Spine Asset Library — Data Layer
+ * Dual-mode: IndexedDB (local) or Supabase (online).
+ * When VITE_SUPABASE_URL is configured and user is authenticated,
+ * all CRUD operations go to Supabase. Otherwise, falls back to local Dexie.
  */
 import Dexie, { type Table } from 'dexie';
+import { isSupabaseConfigured } from './supabase';
+import { getSession } from './auth';
+
+/** Check if we should use Supabase (configured + authenticated) */
+async function useSupabase(): Promise<boolean> {
+    if (!isSupabaseConfigured()) return false;
+    const session = await getSession();
+    return session !== null;
+}
+
+/** Lazy-load supabase-db module to avoid circular imports */
+async function getSupaDb() {
+    return await import('./supabase-db');
+}
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -475,3 +491,98 @@ export async function removeTag(charId: number, tag: string): Promise<void> {
 }
 
 export { db };
+
+// ── Supabase Adapter ─────────────────────────────────────────
+// When Supabase is configured and user is authenticated,
+// these wrapper functions route to supabase-db.ts instead of local Dexie.
+// Import these "routed" versions in UI code for transparent dual-mode.
+
+export async function routedSaveCharacter(...args: Parameters<typeof saveCharacter>): ReturnType<typeof saveCharacter> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.saveCharacter(args[0]); }
+    return saveCharacter(...args);
+}
+
+export async function routedGetAllCharacters(): ReturnType<typeof getAllCharacters> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.getAllCharacters(); }
+    return getAllCharacters();
+}
+
+export async function routedGetCharacter(id: number): ReturnType<typeof getCharacter> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.getCharacter(id); }
+    return getCharacter(id);
+}
+
+export async function routedDeleteCharacter(id: number): ReturnType<typeof deleteCharacter> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.deleteCharacter(id); }
+    return deleteCharacter(id);
+}
+
+export async function routedSearchCharacters(query: string): ReturnType<typeof searchCharacters> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.searchCharacters(query); }
+    return searchCharacters(query);
+}
+
+export async function routedFindDuplicates(jsonNames: string[]): ReturnType<typeof findDuplicates> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.findDuplicates(jsonNames); }
+    return findDuplicates(jsonNames);
+}
+
+export async function routedGetCharacterCount(): ReturnType<typeof getCharacterCount> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.getCharacterCount(); }
+    return getCharacterCount();
+}
+
+export async function routedUpdateThumbnail(id: number, thumbnail: string): ReturnType<typeof updateThumbnail> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.updateThumbnail(id, thumbnail); }
+    return updateThumbnail(id, thumbnail);
+}
+
+export async function routedUpdateCharacterMeta(id: number, meta: any): ReturnType<typeof updateCharacterMeta> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.updateCharacterMeta(id, meta); }
+    return updateCharacterMeta(id, meta);
+}
+
+export async function routedGetAllProjects(): ReturnType<typeof getAllProjects> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.getAllProjects(); }
+    return getAllProjects();
+}
+
+export async function routedCreateProject(name: string, code: string, color?: string): ReturnType<typeof createProject> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.createProject(name, code, color); }
+    return createProject(name, code, color);
+}
+
+export async function routedGetAllCollections(): ReturnType<typeof getAllCollections> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.getAllCollections(); }
+    return getAllCollections();
+}
+
+export async function routedCreateCollection(name: string, icon?: string, color?: string): ReturnType<typeof createCollection> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.createCollection(name, icon, color); }
+    return createCollection(name, icon, color);
+}
+
+export async function routedDeleteCollection(id: number): ReturnType<typeof deleteCollection> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.deleteCollection(id); }
+    return deleteCollection(id);
+}
+
+export async function routedAddToCollection(charId: number, collectionId: number): ReturnType<typeof addToCollection> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.addToCollection(charId, collectionId); }
+    return addToCollection(charId, collectionId);
+}
+
+export async function routedRemoveFromCollection(charId: number, collectionId: number): ReturnType<typeof removeFromCollection> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.removeFromCollection(charId, collectionId); }
+    return removeFromCollection(charId, collectionId);
+}
+
+export async function routedAddTag(charId: number, tag: string): ReturnType<typeof addTag> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.addTag(charId, tag); }
+    return addTag(charId, tag);
+}
+
+export async function routedRemoveTag(charId: number, tag: string): ReturnType<typeof removeTag> {
+    if (await useSupabase()) { const s = await getSupaDb(); return s.removeTag(charId, tag); }
+    return removeTag(charId, tag);
+}

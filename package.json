@@ -14,6 +14,7 @@
     },
     "dependencies": {
         "@esotericsoftware/spine-webgl": "^4.2.106",
+        "@supabase/supabase-js": "^2.103.0",
         "dexie": "^4.4.1",
         "jszip": "^3.10.1"
     }
