@@ -47,7 +47,7 @@ export function AuthForm() {
           if (error) setError(error.message); else { router.push('/library'); router.refresh(); }
         }
       } else if (view === 'signup') {
-        if (!email.endsWith('@vng.com.vn')) { setError('Unable to create account. Please check your credentials.'); setLoading(false); return; }
+        if (!email.endsWith('@vng.com.vn')) { setError('Unable to create account. Your email is not authorized.'); setLoading(false); return; }
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) setError(error.message); else setSuccess('Check your email for a confirmation link.');
       } else {
@@ -74,7 +74,7 @@ export function AuthForm() {
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
         <input type={view === 'login' ? 'text' : 'email'}
-          placeholder={view === 'login' ? 'Email or Username' : 'email@vng.com.vn'}
+          placeholder={view === 'login' ? 'Email or Username' : 'Your work email'}
           value={email} onChange={(e) => setEmail(e.target.value)} required
           autoComplete={view === 'login' ? 'username' : 'email'}
           className="w-full rounded-lg border border-border bg-panel-secondary px-4 py-2.5 text-sm text-text outline-none placeholder:text-dim focus:border-accent" />
