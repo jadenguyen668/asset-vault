@@ -770,7 +770,7 @@ export function initLibrarySearch() {
         btn.id = 'btn-sidebar-expand';
         btn.title = 'Show Sidebar';
         btn.innerHTML = '☰';
-        btn.style.cssText = 'position:absolute;top:10px;left:10px;z-index:30;width:32px;height:32px;border-radius:6px;background:rgba(0,0,0,0.6);border:1px solid var(--border);color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .2s;backdrop-filter:blur(6px);';
+        btn.style.cssText = 'position:absolute;top:10px;left:10px;z-index:30;width:32px;height:32px;border-radius:6px;background:rgba(0,0,0,0.6);border:1px solid var(--border);color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:background .2s, color .2s, border-color .2s;backdrop-filter:blur(6px);';
         btn.addEventListener('mouseenter', () => { btn.style.background = 'var(--accent)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--accent)'; });
         btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(0,0,0,0.6)'; btn.style.color = 'var(--dim)'; btn.style.borderColor = 'var(--border)'; });
         btn.addEventListener('click', (e) => {
@@ -790,35 +790,100 @@ export function initLibrarySearch() {
     const dropZone = document.getElementById('drop-zone');
     const mainEl = document.getElementById('main');
 
+    const resizer0 = document.getElementById('panel-resizer');
     if (collapseBtn && rightPanel && dropZone && mainEl) {
         collapseBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             rightPanel.classList.add('collapsed');
             mainEl.classList.remove('split-mode');
-
+            if (resizer0) resizer0.classList.add('hidden');
             addExpandBtn();
         });
     }
 
     function addExpandBtn() {
         if (document.getElementById('btn-expand-panel')) return;
-        const mainEl = document.getElementById('main');
-        if (!mainEl) return;
+        const header = document.querySelector('.library-header');
+        if (!header) return;
         const btn = document.createElement('button');
         btn.id = 'btn-expand-panel';
-        btn.className = 'expand-panel-btn';
+        btn.className = 'expand-panel-btn-inline';
         btn.title = 'Show Preview Panel';
+        btn.setAttribute('aria-label', 'Show preview panel');
         btn.textContent = '▶';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const rp = document.getElementById('right-panel');
             const m = document.getElementById('main');
+            const rs = document.getElementById('panel-resizer');
             if (rp) rp.classList.remove('collapsed');
             if (m) m.classList.add('split-mode');
-
+            if (rs) rs.classList.remove('hidden');
             btn.remove();
         });
-        mainEl.appendChild(btn);
+        header.appendChild(btn);
+    }
+
+    // ── Panel Resizer (drag to resize) ──
+    const resizer = document.getElementById('panel-resizer');
+    if (resizer && rightPanel && mainEl) {
+        // Restore saved width
+        const savedWidth = localStorage.getItem('spine-panel-width');
+        if (savedWidth && rightPanel) {
+            rightPanel.style.flex = `0 0 ${savedWidth}px`;
+        }
+
+        let isResizing = false;
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isResizing = true;
+            resizer.classList.add('dragging');
+            document.body.classList.add('resizing');
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const mainRect = mainEl.getBoundingClientRect();
+            const newRightWidth = mainRect.right - e.clientX;
+            const minRight = 280;
+            const minLeft = 300;
+            const maxRight = mainRect.width - minLeft;
+            const clamped = Math.max(minRight, Math.min(maxRight, newRightWidth));
+            rightPanel.style.flex = `0 0 ${clamped}px`;
+        });
+        window.addEventListener('mouseup', () => {
+            if (!isResizing) return;
+            isResizing = false;
+            resizer.classList.remove('dragging');
+            document.body.classList.remove('resizing');
+            // Save width
+            const w = rightPanel.getBoundingClientRect().width;
+            localStorage.setItem('spine-panel-width', String(Math.round(w)));
+        });
+    }
+
+    // ── Maximize Preview Toggle ──
+    const maximizeBtn = document.getElementById('btn-maximize-panel');
+    if (maximizeBtn && rightPanel && dropZone && resizer) {
+        let isMaximized = false;
+        maximizeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            isMaximized = !isMaximized;
+            if (isMaximized) {
+                rightPanel.classList.add('maximized');
+                dropZone.classList.add('minimized');
+                resizer.classList.add('hidden');
+                if (collapseBtn) collapseBtn.style.display = 'none';
+                maximizeBtn.textContent = '⧉';
+                maximizeBtn.title = 'Restore Layout';
+            } else {
+                rightPanel.classList.remove('maximized');
+                dropZone.classList.remove('minimized');
+                resizer.classList.remove('hidden');
+                if (collapseBtn) collapseBtn.style.display = '';
+                maximizeBtn.textContent = '⛶';
+                maximizeBtn.title = 'Maximize Preview';
+            }
+        });
     }
 
     if (searchInput) {

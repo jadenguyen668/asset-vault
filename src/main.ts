@@ -122,12 +122,18 @@ function setupDropZone() {
     // Click IMPORT button → file picker → import directly to library
     const btnImport = document.getElementById('btn-sidebar-import');
     if (btnImport) {
-        btnImport.addEventListener('click', () => {
+        btnImport.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            console.log('[IMPORT] Button clicked, opening file picker...');
             const input = document.createElement('input');
             input.type = 'file';
             input.multiple = true;
+            input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+            document.body.appendChild(input);
             input.addEventListener('change', async () => {
                 if (input.files && input.files.length > 0) {
+                    console.log('[IMPORT] Files selected:', input.files.length);
                     // Parse files first to get skeleton data
                     const files = Array.from(input.files);
                     const tempSets: GridSpineData[] = [];
@@ -159,11 +165,11 @@ function setupDropZone() {
                             majorVersion: 0, minorVersion: 0,
                         });
                     }
-                    if (tempSets.length === 0) return;
+                    if (tempSets.length === 0) { input.remove(); return; }
                     // Show import dialog → save to library
                     const importItems = await prepareImportItems(tempSets);
                     const result = await showImportDialog(importItems);
-                    if (!result) return;
+                    if (!result) { input.remove(); return; }
                     for (const item of result.selectedItems) {
                         const skelSet = tempSets.find(s => s.jsonName === item.jsonName);
                         if (!skelSet) continue;
@@ -209,6 +215,7 @@ function setupDropZone() {
                     }
                     renderLibrary();
                 }
+                input.remove();
             });
             input.click();
         });

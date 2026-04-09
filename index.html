@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="color-scheme: dark">
 
 <head>
   <meta charset="UTF-8" />
@@ -8,6 +8,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet" />
+  <meta name="theme-color" content="#0d0d1a" />
   <link rel="stylesheet" href="/src/style.css" />
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
 </head>
@@ -39,10 +40,9 @@
             <div id="library-sidebar" class="library-sidebar">
               <div class="sidebar-header" style="justify-content: space-between;">
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <button id="btn-sidebar-toggle" style="background:transparent;border:none;color:var(--text);cursor:pointer;padding:2px;display:flex;opacity:0.6;transition:opacity 0.2s;" title="Toggle Sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg></button>
+                    <button id="btn-sidebar-toggle" aria-label="Toggle sidebar" style="background:transparent;border:none;color:var(--text);cursor:pointer;padding:2px;display:flex;opacity:0.6;transition:opacity 0.2s;" title="Toggle Sidebar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg></button>
                     <span class="sidebar-title-text" style="display:flex;align-items:center;gap:6px;font-weight:700;"><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Asset Library</span>
                 </div>
-                <button id="btn-sidebar-import" title="Import Files" style="background:var(--accent);color:#fff;border:none;padding:4px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;">+ IMPORT</button>
               </div>
               <ul id="sidebar-menu" class="sidebar-menu">
                 <li class="sidebar-item active" data-type="all">Everything <span id="library-count" class="sidebar-count">0</span></li>
@@ -54,7 +54,7 @@
             </div>
             <div class="library-main">
               <div class="library-header">
-                <input id="library-search" class="library-search" type="text" placeholder="Search anything (name, version, status, note, skin...)" />
+                <input id="library-search" class="library-search" type="text" placeholder="Search assets…" autocomplete="off" name="asset-search" />
                 <select id="library-sort" class="library-sort" title="Sort characters">
                   <option value="date-desc">↓ Newest</option>
                   <option value="date-asc">↑ Oldest</option>
@@ -67,6 +67,7 @@
                   <option value="project-asc">Project A→Z</option>
                   <option value="project-desc">Project Z→A</option>
                 </select>
+                <button id="btn-sidebar-import" class="library-import-btn" title="Import Files">📥 IMPORT</button>
               </div>
               <div class="library-body">
                 <div id="library-grid" class="library-grid"></div>
@@ -75,11 +76,17 @@
         </div>
       </div>
 
-      <!-- RIGHT: Viewer + Controls + Properties (always visible, ~40% width) -->
+      <!-- Resizable divider -->
+      <div id="panel-resizer" class="panel-resizer"></div>
+
+      <!-- RIGHT: Viewer + Controls + Properties -->
       <div id="right-panel" class="right-panel">
-        <!-- Collapse toggle -->
-        <button id="btn-collapse-panel" class="collapse-panel-btn" title="Toggle Preview Panel">◀</button>
-        <!-- TOP: Preview Canvas (50% height) -->
+        <div class="right-panel-header">
+          <span class="right-panel-title">Preview</span>
+          <button id="btn-maximize-panel" class="collapse-panel-btn" aria-label="Maximize preview" title="Maximize Preview">⛶</button>
+          <button id="btn-collapse-panel" class="collapse-panel-btn" aria-label="Collapse preview" title="Collapse Preview Panel">◀</button>
+        </div>
+        <!-- TOP: Preview Canvas -->
         <div class="right-preview">
           <div id="canvas-wrap">
             <div id="preview-empty-hint" class="preview-empty-hint">
@@ -122,9 +129,9 @@
             <div class="ctrl-section">
               <div class="ctrl-label">Playback</div>
               <div class="ctrl-row">
-                <button id="btn-play" class="ctrl-btn active" title="Play">▶</button>
-                <button id="btn-pause" class="ctrl-btn" title="Pause">⏸</button>
-                <button id="btn-loop" class="ctrl-btn active" title="Loop"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
+                <button id="btn-play" class="ctrl-btn active" title="Play" aria-label="Play">▶</button>
+                <button id="btn-pause" class="ctrl-btn" title="Pause" aria-label="Pause">⏸</button>
+                <button id="btn-loop" class="ctrl-btn active" title="Loop" aria-label="Toggle loop"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></button>
               </div>
             </div>
 
