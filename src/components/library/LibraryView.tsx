@@ -12,7 +12,7 @@ import type { Character, Project, Collection } from '@/types/database';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 import { downloadFile } from '@/lib/storage/r2';
 import { ViewerProperties } from '@/components/viewer/ViewerProperties';
-import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2 } from 'lucide-react';
+import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat } from 'lucide-react';
 
 interface Props {
   initialCharacters: Character[];
@@ -218,52 +218,83 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           )}
         </div>
 
-        {/* Loading state */}
-        {loadingChar && (
-          <div className="flex flex-1 items-center justify-center gap-2 text-dim">
-            <Loader2 className="h-5 w-5 animate-spin text-accent" />
-            <span className="text-sm">Loading assets...</span>
+        {/* === TOP: Preview Canvas — always visible with checkerboard === */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            flex: previewMaximized ? 1 : '1 1 50%',
+            minHeight: previewMaximized ? 0 : 200,
+            borderBottom: '1px solid var(--border)',
+            background: 'repeating-conic-gradient(#2a2a3a 0% 25%, #1e1e2e 0% 50%) 50%/20px 20px',
+          }}
+        >
+          {/* Loading overlay */}
+          {loadingChar && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50">
+              <div className="flex items-center gap-2 text-white">
+                <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                <span className="text-sm font-semibold">Loading assets...</span>
+              </div>
+            </div>
+          )}
+
+          {/* Spine Viewer (when file loaded) */}
+          {hasPreview && (
+            <SpineViewer
+              ref={viewerRef}
+              spineFiles={previewFiles}
+              majorVersion={previewMajor}
+              minorVersion={previewMinor}
+              onLoaded={handleViewerLoaded}
+              onError={handleViewerError}
+            />
+          )}
+
+          {/* Empty state hint */}
+          {!hasPreview && !loadingChar && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pointer-events-none">
+              <Download className="h-8 w-8 text-dim opacity-40" />
+              <span className="text-xs text-dim font-mono tracking-wide opacity-60">Drop asset here to preview</span>
+            </div>
+          )}
+        </div>
+
+        {/* === BOTTOM: Controls + Properties — always visible === */}
+        {previewMaximized ? (
+          (animations.length > 0 || skins.length > 0) && (
+            <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
+              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact />
+            </div>
+          )
+        ) : (
+          <div className="flex overflow-hidden border-t border-border" style={{ flex: '1 1 50%', minHeight: 180 }}>
+            {/* Left: Controls */}
+            <div className="flex flex-col gap-2 overflow-y-auto border-r border-border p-2.5" style={{ flex: 1, background: 'var(--panel)', minWidth: 0 }}>
+              {hasPreview && (animations.length > 0 || skins.length > 0) ? (
+                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} />
+              ) : (
+                <div className="flex flex-1 flex-col gap-3 p-1">
+                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Animation</span>
+                    <select disabled className="mt-1 w-full rounded border border-border bg-panel-secondary px-2 py-1.5 text-xs text-dim opacity-50"><option>No animation</option></select></div>
+                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Playback</span>
+                    <div className="mt-1 flex gap-1 opacity-40">
+                      <span className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim"><Play size={12} /></span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim"><Pause size={12} /></span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim"><Repeat size={12} /></span>
+                    </div></div>
+                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Speed <span className="text-accent">1.0x</span></span>
+                    <input type="range" disabled className="mt-1 w-full opacity-30" /></div>
+                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Scale <span className="text-accent">1.0x</span></span>
+                    <input type="range" disabled className="mt-1 w-full opacity-30" /></div>
+                </div>
+              )}
+            </div>
+            {/* Right: Properties */}
+            <div className="flex flex-col overflow-hidden" style={{ flex: 1, background: 'var(--panel-secondary)', minWidth: 0 }}>
+              <ViewerProperties character={selectedChar} />
+            </div>
           </div>
         )}
-
-        {/* === MAIN CONTENT: Preview Top + Controls/Properties Bottom === */}
-        {!loadingChar && hasPreview ? (
-          <>
-            {/* TOP: Preview Canvas */}
-            <div className="relative overflow-hidden" style={{ flex: previewMaximized ? 1 : '1 1 50%', minHeight: previewMaximized ? 0 : 200, borderBottom: '1px solid var(--border)' }}>
-              <SpineViewer
-                ref={viewerRef}
-                spineFiles={previewFiles}
-                majorVersion={previewMajor}
-                minorVersion={previewMinor}
-                onLoaded={handleViewerLoaded}
-                onError={handleViewerError}
-              />
-            </div>
-
-            {/* BOTTOM: Controls (left) + Properties (right) */}
-            {previewMaximized ? (
-              /* Maximized: compact strip */
-              <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact />
-              </div>
-            ) : (
-              /* Normal: two-column bottom panel */
-              <div className="flex overflow-hidden border-t border-border" style={{ flex: '1 1 50%', minHeight: 180 }}>
-                {/* Left column: Controls */}
-                <div className="flex flex-col gap-2 overflow-y-auto border-r border-border p-2.5" style={{ flex: 1, background: 'var(--panel)', minWidth: 0 }}>
-                  <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} />
-                </div>
-                {/* Right column: Properties */}
-                <div className="flex flex-col overflow-hidden" style={{ flex: 1, background: 'var(--panel-secondary)', minWidth: 0 }}>
-                  <ViewerProperties character={selectedChar} />
-                </div>
-              </div>
-            )}
-          </>
-        ) : !loadingChar ? (
-          <DropZone onFilesLoaded={handleFilesLoaded} />
-        ) : null}
       </div>
     </div>
   );
