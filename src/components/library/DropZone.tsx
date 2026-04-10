@@ -1,6 +1,6 @@
 'use client';
 import { useState, useCallback, useRef } from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, FileImage, Sparkles } from 'lucide-react';
 import { detectVersion } from '@/lib/spine/version-detect';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 
@@ -137,7 +137,6 @@ async function parseSpineSet(jsonFile: File, allFiles: File[]): Promise<ParsedSp
     const pngBlobs = new Map<string, Blob>();
     for (const png of pngFiles) pngBlobs.set(png.name, png);
 
-    // Parse metadata from JSON
     const jsonData = JSON.parse(jsonText);
     const animNames = Object.keys(jsonData.animations || {});
 
@@ -233,99 +232,140 @@ export function DropZone({ onFilesLoaded }: DropZoneProps) {
 
   return (
     <div
-      className={`drop-zone-overlay ${dragging ? 'active' : ''}`}
+      className="drop-zone-panel"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {dragging && (
-        <div className="drop-zone-modal">
-          <Upload size={48} strokeWidth={1.5} />
-          <p className="drop-zone-title">Drop Spine Files Here</p>
-          <p className="drop-zone-sub">.json + .atlas + .png</p>
-        </div>
-      )}
-      {parsing && (
-        <div className="drop-zone-modal">
-          <div className="drop-zone-spinner" />
-          <p className="drop-zone-title">Parsing files...</p>
-        </div>
-      )}
-      {!dragging && !parsing && (
-        <button onClick={handleBrowse} className="drop-zone-browse-btn">
-          <Upload size={16} /> Import Files
-        </button>
-      )}
+      <div className={`drop-zone-inner ${dragging ? 'dragging' : ''}`}>
+        {parsing ? (
+          <div className="drop-zone-content">
+            <div className="drop-zone-spinner" />
+            <p className="drop-zone-title">Parsing Spine files...</p>
+          </div>
+        ) : (
+          <div className="drop-zone-content">
+            <div className="drop-zone-icon-ring">
+              {dragging ? <Sparkles size={36} /> : <Upload size={36} />}
+            </div>
+            <p className="drop-zone-title">
+              {dragging ? 'Drop to Preview' : 'Drag & Drop Spine Files'}
+            </p>
+            <p className="drop-zone-sub">
+              Drop a folder or select files containing<br />
+              <span className="drop-zone-formats">.json</span> + <span className="drop-zone-formats">.atlas</span> + <span className="drop-zone-formats">.png</span>
+            </p>
+            {!dragging && (
+              <button onClick={handleBrowse} className="drop-zone-btn">
+                <FileImage size={14} /> Browse Files
+              </button>
+            )}
+            <div className="drop-zone-hint">
+              <span>Supports Spine 3.x & 4.x</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       <style jsx>{`
-        .drop-zone-overlay {
-          position: relative;
+        .drop-zone-panel {
+          display: flex;
+          flex: 1;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: var(--bg, #12121f);
         }
-        .drop-zone-overlay.active::before {
-          content: '';
-          position: fixed;
-          inset: 0;
-          background: rgba(124, 92, 252, 0.1);
-          border: 3px dashed var(--accent, #7c5cfc);
-          border-radius: 12px;
-          z-index: 100;
-          pointer-events: none;
-        }
-        .drop-zone-modal {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background: var(--panel, #1e1e2e);
-          border: 2px solid var(--accent, #7c5cfc);
+        .drop-zone-inner {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
           border-radius: 16px;
-          padding: 40px 60px;
+          border: 2px dashed var(--border, #2a2a3e);
+          background: var(--panel, #1e1e2e);
+          transition: all 0.25s ease;
+        }
+        .drop-zone-inner.dragging {
+          border-color: var(--accent, #7c5cfc);
+          background: rgba(124, 92, 252, 0.08);
+          box-shadow: 0 0 40px rgba(124, 92, 252, 0.15);
+        }
+        .drop-zone-content {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 12px;
-          z-index: 101;
-          color: var(--text, #e0e0e0);
-          box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+          gap: 14px;
+          text-align: center;
+        }
+        .drop-zone-icon-ring {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, rgba(124, 92, 252, 0.15), rgba(124, 92, 252, 0.05));
+          color: var(--accent, #7c5cfc);
+          border: 1px solid rgba(124, 92, 252, 0.2);
         }
         .drop-zone-title {
-          font-size: 18px;
+          font-size: 17px;
           font-weight: 700;
+          color: var(--text, #e0e0e0);
           margin: 0;
         }
         .drop-zone-sub {
           font-size: 13px;
           color: var(--dim, #666);
           margin: 0;
+          line-height: 1.5;
+        }
+        .drop-zone-formats {
+          display: inline-block;
+          background: rgba(124, 92, 252, 0.12);
+          color: var(--accent, #7c5cfc);
+          padding: 1px 6px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-family: monospace;
+          font-weight: 600;
+        }
+        .drop-zone-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 10px 20px;
+          border-radius: 8px;
+          border: 1px solid var(--accent, #7c5cfc);
+          background: transparent;
+          color: var(--accent, #7c5cfc);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+          margin-top: 4px;
+        }
+        .drop-zone-btn:hover {
+          background: var(--accent, #7c5cfc);
+          color: #fff;
+        }
+        .drop-zone-hint {
+          font-size: 11px;
+          color: var(--dim, #444);
+          margin-top: 8px;
         }
         .drop-zone-spinner {
-          width: 32px;
-          height: 32px;
+          width: 40px;
+          height: 40px;
           border: 3px solid var(--border, #2a2a3e);
           border-top: 3px solid var(--accent, #7c5cfc);
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .drop-zone-browse-btn {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 16px;
-          border-radius: 8px;
-          border: 1px solid var(--border, #2a2a3e);
-          background: var(--panel-secondary, #252538);
-          color: var(--dim, #666);
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s;
-        }
-        .drop-zone-browse-btn:hover {
-          background: var(--accent, #7c5cfc);
-          color: #fff;
-          border-color: var(--accent, #7c5cfc);
-        }
       `}</style>
     </div>
   );
