@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { LibrarySidebar } from './LibrarySidebar';
 import { LibraryGrid } from './LibraryGrid';
@@ -11,6 +11,7 @@ import { PanelResizer } from '@/components/layout/PanelResizer';
 import type { Character, Project, Collection } from '@/types/database';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 import { downloadFile } from '@/lib/storage/r2';
+import { ViewerProperties } from '@/components/viewer/ViewerProperties';
 import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2 } from 'lucide-react';
 
 interface Props {
@@ -33,14 +34,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [loadingChar, setLoadingChar] = useState(false);
 
-  // Panel layout state
-  const [panelWidth, setPanelWidth] = useState<number | null>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('spine-panel-width');
-      return saved ? parseInt(saved) : null;
-    }
-    return null;
-  });
+  // Panel layout state — defer localStorage read to useEffect to avoid hydration mismatch
+  const [panelWidth, setPanelWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const saved = localStorage.getItem('spine-panel-width');
+    if (saved) setPanelWidth(parseInt(saved));
+  }, []);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [previewMaximized, setPreviewMaximized] = useState(false);
 
@@ -227,10 +226,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           </div>
         )}
 
-        {/* Viewer content */}
+        {/* === MAIN CONTENT: Preview Top + Controls/Properties Bottom === */}
         {!loadingChar && hasPreview ? (
-          <div className="flex flex-1 overflow-hidden">
-            <div className="flex-1 relative">
+          <>
+            {/* TOP: Preview Canvas */}
+            <div className="relative overflow-hidden" style={{ flex: previewMaximized ? 1 : '1 1 50%', minHeight: previewMaximized ? 0 : 200, borderBottom: '1px solid var(--border)' }}>
               <SpineViewer
                 ref={viewerRef}
                 spineFiles={previewFiles}
@@ -240,24 +240,30 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 onError={handleViewerError}
               />
             </div>
-            {!previewMaximized && (animations.length > 0 || skins.length > 0) && (
-              <ViewerControls
-                viewerRef={viewerRef}
-                animations={animations}
-                skins={skins}
-              />
+
+            {/* BOTTOM: Controls (left) + Properties (right) */}
+            {previewMaximized ? (
+              /* Maximized: compact strip */
+              <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
+                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact />
+              </div>
+            ) : (
+              /* Normal: two-column bottom panel */
+              <div className="flex overflow-hidden border-t border-border" style={{ flex: '1 1 50%', minHeight: 180 }}>
+                {/* Left column: Controls */}
+                <div className="flex flex-col gap-2 overflow-y-auto border-r border-border p-2.5" style={{ flex: 1, background: 'var(--panel)', minWidth: 0 }}>
+                  <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} />
+                </div>
+                {/* Right column: Properties */}
+                <div className="flex flex-col overflow-hidden" style={{ flex: 1, background: 'var(--panel-secondary)', minWidth: 0 }}>
+                  <ViewerProperties character={selectedChar} />
+                </div>
+              </div>
             )}
-          </div>
+          </>
         ) : !loadingChar ? (
           <DropZone onFilesLoaded={handleFilesLoaded} />
         ) : null}
-
-        {/* Maximized compact controls strip */}
-        {previewMaximized && hasPreview && !loadingChar && (animations.length > 0 || skins.length > 0) && (
-          <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-            <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact />
-          </div>
-        )}
       </div>
     </div>
   );

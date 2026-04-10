@@ -162,10 +162,8 @@ export function ViewerControls({ viewerRef, animations, skins, compact }: Viewer
           display: flex;
           flex-direction: column;
           gap: 12px;
-          padding: 12px;
-          background: var(--panel, #1e1e2e);
-          border-left: 1px solid var(--border, #2a2a3e);
-          min-width: 200px;
+          padding: 0;
+          background: transparent;
           overflow-y: auto;
         }
         .control-group {
