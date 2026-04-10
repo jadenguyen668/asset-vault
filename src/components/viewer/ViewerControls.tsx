@@ -47,9 +47,16 @@ export function ViewerControls({ viewerRef, animations, skins, compact }: Viewer
     viewerRef.current?.engine?.setLoop(next);
   }, [looping, viewerRef]);
 
+  const [scale, setScaleVal] = useState(1);
+
   const handleSpeedChange = useCallback((val: number) => {
     setSpeed(val);
     viewerRef.current?.engine?.setSpeed(val);
+  }, [viewerRef]);
+
+  const handleScaleChange = useCallback((val: number) => {
+    setScaleVal(val);
+    viewerRef.current?.engine?.setScale(val);
   }, [viewerRef]);
 
   const handleReset = useCallback(() => {
@@ -144,6 +151,16 @@ export function ViewerControls({ viewerRef, animations, skins, compact }: Viewer
         <input
           type="range" min="0.1" max="3" step="0.1" value={speed}
           onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+          className="control-slider"
+        />
+      </div>
+
+      {/* Scale */}
+      <div className="control-group">
+        <label className="control-label">Scale: {scale.toFixed(1)}x</label>
+        <input
+          type="range" min="0.1" max="5" step="0.1" value={scale}
+          onChange={(e) => handleScaleChange(parseFloat(e.target.value))}
           className="control-slider"
         />
       </div>

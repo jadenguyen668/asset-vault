@@ -113,9 +113,16 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setSelectedChar(null);
   }, []);
 
+  const [skelInfo, setSkelInfo] = useState<{ bones: number; slots: number; anims: number; skins: number } | null>(null);
+
   const handleViewerLoaded = useCallback((info: { animations: string[]; skins: string[] }) => {
     setAnimations(info.animations);
     setSkins(info.skins);
+    // Get skeleton info after a tick (engine needs to finish setup)
+    setTimeout(() => {
+      const si = viewerRef.current?.getSkeletonInfo();
+      if (si) setSkelInfo(si);
+    }, 100);
   }, []);
 
   const handleViewerError = useCallback((error: string) => {
@@ -226,20 +233,18 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           <span className="text-[10px] uppercase tracking-widest text-dim font-mono flex-1">Preview</span>
           {hasPreview && (
             <>
+              <span className="text-xs font-semibold text-text truncate">{previewName}</span>
               {previewMajor > 0 && (
                 <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-accent text-white">
                   v{previewMajor}.{previewMinor}
                 </span>
               )}
-              {animations.length > 0 && (
-                <span className="text-[10px] font-mono text-dim flex items-center gap-0.5">
-                  <Film size={10} /> {animations.length}
-                </span>
-              )}
-              {skins.length > 1 && (
-                <span className="text-[10px] font-mono text-dim flex items-center gap-0.5">
-                  <Layers size={10} /> {skins.length}
-                </span>
+              {skelInfo && (
+                <>
+                  <span className="text-[10px] font-mono text-dim flex items-center gap-0.5"><Bone size={10} /> {skelInfo.bones}</span>
+                  <span className="text-[10px] font-mono text-dim flex items-center gap-0.5"><Film size={10} /> {skelInfo.anims}</span>
+                  {skelInfo.skins > 1 && <span className="text-[10px] font-mono text-dim flex items-center gap-0.5"><Layers size={10} /> {skelInfo.skins}</span>}
+                </>
               )}
             </>
           )}
@@ -260,7 +265,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
             flex: previewMaximized ? 1 : '1 1 50%',
             minHeight: previewMaximized ? 0 : 200,
             borderBottom: '1px solid var(--border)',
-            background: 'repeating-conic-gradient(#2a2a3a 0% 25%, #1e1e2e 0% 50%) 50%/20px 20px',
+            background: '#1a1a2e',
             outline: draggingOver ? '2px solid var(--accent)' : 'none',
           }}
           onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDraggingOver(true); }}

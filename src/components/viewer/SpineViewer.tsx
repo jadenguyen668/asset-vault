@@ -6,6 +6,7 @@ export interface SpineViewerHandle {
   engine: SpineViewerEngine | null;
   getAnimations: () => string[];
   getSkins: () => string[];
+  getSkeletonInfo: () => { bones: number; slots: number; anims: number; skins: number };
   playAnimation: (name: string) => void;
   setSkin: (name: string) => void;
 }
@@ -33,6 +34,7 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
     engine: engineRef.current,
     getAnimations: () => engineRef.current?.getAnimations() ?? [],
     getSkins: () => engineRef.current?.getSkins() ?? [],
+    getSkeletonInfo: () => engineRef.current?.getSkeletonInfo() ?? { bones: 0, slots: 0, anims: 0, skins: 0 },
     playAnimation: (name: string) => engineRef.current?.playAnimation(name),
     setSkin: (name: string) => engineRef.current?.setSkin(name),
   }));
