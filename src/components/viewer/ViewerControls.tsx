@@ -7,9 +7,10 @@ interface ViewerControlsProps {
   viewerRef: React.RefObject<SpineViewerHandle | null>;
   animations: string[];
   skins: string[];
+  compact?: boolean;
 }
 
-export function ViewerControls({ viewerRef, animations, skins }: ViewerControlsProps) {
+export function ViewerControls({ viewerRef, animations, skins, compact }: ViewerControlsProps) {
   const [currentAnim, setCurrentAnim] = useState(animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
   const [playing, setPlaying] = useState(true);
@@ -65,6 +66,31 @@ export function ViewerControls({ viewerRef, animations, skins }: ViewerControlsP
     const z = viewerRef.current?.engine?.getViewZoom() ?? 1;
     viewerRef.current?.engine?.setViewZoom(z / 1.2);
   }, [viewerRef]);
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-3 flex-wrap">
+        {animations.length > 0 && (
+          <select value={currentAnim} onChange={(e) => handleAnimChange(e.target.value)}
+            className="rounded border border-border bg-panel-secondary px-2 py-1 text-xs text-text outline-none" style={{ minWidth: 140, maxWidth: 240 }}>
+            {animations.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
+        <div className="flex gap-1">
+          <button onClick={togglePlay} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white">
+            {playing ? <Pause size={12} /> : <Play size={12} />}
+          </button>
+          <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`}>
+            <Repeat size={12} />
+          </button>
+        </div>
+        <label className="flex items-center gap-1 text-[10px] text-dim font-mono whitespace-nowrap">
+          Speed {speed.toFixed(1)}x
+          <input type="range" min="0.1" max="3" step="0.1" value={speed} onChange={(e) => handleSpeedChange(parseFloat(e.target.value))} className="w-20" style={{ accentColor: 'var(--accent)' }} />
+        </label>
+      </div>
+    );
+  }
 
   return (
     <div className="viewer-controls">
