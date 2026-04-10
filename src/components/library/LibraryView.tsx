@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { LibrarySidebar } from './LibrarySidebar';
 import { LibraryGrid } from './LibraryGrid';
 import { LibrarySearch } from './LibrarySearch';
-import { DropZone, type ParsedSpineSet } from './DropZone';
+import { DropZone, getFilesFromDrop, parseSpineSet, type ParsedSpineSet } from './DropZone';
 import SpineViewer, { type SpineViewerHandle } from '@/components/viewer/SpineViewer';
 import { ViewerControls } from '@/components/viewer/ViewerControls';
 import { PanelResizer } from '@/components/layout/PanelResizer';
@@ -123,6 +123,41 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   }, []);
 
   const hasPreview = previewFiles !== null;
+  const [draggingOver, setDraggingOver] = useState(false);
+
+  // Prevent browser default drop behavior globally
+  useEffect(() => {
+    const prevent = (e: DragEvent) => { e.preventDefault(); };
+    window.addEventListener('dragover', prevent);
+    window.addEventListener('drop', prevent);
+    return () => { window.removeEventListener('dragover', prevent); window.removeEventListener('drop', prevent); };
+  }, []);
+
+  // Handle drop on preview canvas
+  const handleCanvasDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingOver(false);
+    if (!e.dataTransfer) return;
+    setLoadingChar(true);
+    try {
+      const files = await getFilesFromDrop(e.dataTransfer);
+      const jsonFiles = files.filter(f => {
+        const n = f.name.toLowerCase();
+        return n.endsWith('.json') || n.endsWith('.skel');
+      });
+      const sets: ParsedSpineSet[] = [];
+      for (const jf of jsonFiles) {
+        const result = await parseSpineSet(jf, files);
+        if (result) sets.push(result);
+      }
+      if (sets.length > 0) handleFilesLoaded(sets);
+    } catch (err) {
+      console.error('[DROP] Error:', err);
+      setPreviewError('Failed to parse dropped files');
+    }
+    setLoadingChar(false);
+  }, [handleFilesLoaded]);
 
   const handleResize = useCallback((width: number) => {
     setPanelWidth(width);
@@ -226,7 +261,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
             minHeight: previewMaximized ? 0 : 200,
             borderBottom: '1px solid var(--border)',
             background: 'repeating-conic-gradient(#2a2a3a 0% 25%, #1e1e2e 0% 50%) 50%/20px 20px',
+            outline: draggingOver ? '2px solid var(--accent)' : 'none',
           }}
+          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDraggingOver(true); }}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDraggingOver(false); }}
+          onDrop={handleCanvasDrop}
         >
           {/* Loading overlay */}
           {loadingChar && (

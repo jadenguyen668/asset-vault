@@ -371,4 +371,5 @@ export function DropZone({ onFilesLoaded }: DropZoneProps) {
   );
 }
 
+export { getFilesFromDrop, parseSpineSet };
 export type { ParsedSpineSet };
