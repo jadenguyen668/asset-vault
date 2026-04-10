@@ -515,6 +515,11 @@ export class SpineViewerEngine {
     this._spine4 = spine4;
     this.state.runtimeVersion = '4.x';
 
+    // CRITICAL: Disable premultiplied alpha on GL textures
+    // GLTexture premultiplies by default, but drawSkeleton(skel, false) expects straight alpha
+    // Mismatch causes black rectangles around semi-transparent/additive blend areas
+    (spine4 as any).GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = true;
+
     if (!this.state.gl) {
       const glConfig: WebGLContextAttributes = { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true };
       this.state.gl = (this.state.canvas.getContext('webgl2', glConfig) || this.state.canvas.getContext('webgl', glConfig)) as WebGLRenderingContext;
@@ -668,7 +673,21 @@ export class SpineViewerEngine {
 
   setSkin(name: string) {
     if (!this.state?.skeleton) return;
-    try { this.state.skeleton.setSkinByName(name); this.state.skeleton.setSlotsToSetupPose(); } catch (e) { console.warn('setSkin:', e); }
+    try {
+      this.state.skeleton.setSkinByName(name);
+      this.state.skeleton.setSlotsToSetupPose();
+      // Re-apply FX fixes after skin change
+      for (let i = 0; i < this.state.skeleton.slots.length; i++) {
+        const slot = this.state.skeleton.slots[i];
+        const att = slot.getAttachment();
+        if (slot.data.blendMode !== 0 && att?.name === 'rec') slot.color.a = 0;
+      }
+      // Update world transform to apply new skin geometry
+      const spine4 = this._spine4;
+      try {
+        this.state.skeleton.updateWorldTransform(spine4?.Physics?.update ?? spine4?.Physics?.none ?? 0 as any);
+      } catch { try { this.state.skeleton.updateWorldTransform(0 as any); } catch { /* */ } }
+    } catch (e) { console.warn('setSkin:', e); }
   }
 
   setSpeed(s: number) { if (this.state) this.state.speed = s; }
