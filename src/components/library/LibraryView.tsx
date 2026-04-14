@@ -327,9 +327,15 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         ]).select('id').single();
         if (projData) projectId = projData.id;
       }
-      const finalUpdates = { ...updates, project_id: projectId };
+      const finalUpdates = { ...updates };
+      if (projectId !== undefined) {
+        finalUpdates.project_id = projectId;
+      } else {
+        delete finalUpdates.project_id;
+      }
+      
       await supabase.from('characters').update(finalUpdates).eq('id', selectedChar.id);
-      setSelectedChar({ ...selectedChar, ...finalUpdates });
+      setSelectedChar({ ...selectedChar, ...finalUpdates } as Character);
       router.refresh();
     } catch(e) {
       console.error('Update failed', e);
