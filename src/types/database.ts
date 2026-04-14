@@ -38,7 +38,6 @@ export interface Character {
   tags: string[];
   notes: string;
   status: AssetStatus;
-  visibility: AssetVisibility;
   project_id: number | null;
   collection_ids: number[];
   json_path: string | null;

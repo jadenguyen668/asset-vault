@@ -12,7 +12,12 @@ import type { Character, Project, Collection } from '@/types/database';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 import { downloadFile } from '@/lib/storage/r2';
 import { ViewerProperties } from '@/components/viewer/ViewerProperties';
-import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat } from 'lucide-react';
+import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save } from 'lucide-react';
+import { ImportDialog, type ImportResult } from './ImportDialog';
+import { uploadSpineFiles } from '@/lib/storage/r2';
+import { saveCharacter, deleteCharacter } from '@/lib/db/characters';
+import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
 
 interface Props {
   initialCharacters: Character[];
@@ -24,6 +29,9 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   useAuth();
 
   const viewerRef = useRef<SpineViewerHandle>(null);
+  const router = useRouter();
+  const [activeSets, setActiveSets] = useState<ParsedSpineSet[]>([]);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [previewFiles, setPreviewFiles] = useState<SpineFiles | null>(null);
   const [previewMajor, setPreviewMajor] = useState(3);
@@ -64,15 +72,27 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         atlasText = await blob.text();
       }
 
-      // Fetch PNG textures from R2
+      // Fetch PNG textures from R2 or base64 data URLs
       const pngBlobs = new Map<string, Blob>();
       if (char.png_paths && char.png_paths.length > 0) {
         await Promise.all(
           char.png_paths.map(async (path) => {
             try {
-              const blob = await downloadFile(path);
-              const filename = path.split('/').pop() || path;
-              pngBlobs.set(filename, blob);
+              if (path.startsWith('data:image/')) {
+                // Base64 data URL: extract filename and decode
+                const nameMatch = path.match(/;name=([^;]+);/);
+                const filename = nameMatch ? nameMatch[1] : 'texture.png';
+                const base64Part = path.split(',')[1];
+                const binaryStr = atob(base64Part);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+                pngBlobs.set(filename, new Blob([bytes], { type: 'image/png' }));
+              } else {
+                // R2 path
+                const blob = await downloadFile(path);
+                const filename = path.split('/').pop() || path;
+                pngBlobs.set(filename, blob);
+              }
             } catch (e) {
               console.warn('[PREVIEW] Failed to fetch PNG:', path, e);
             }
@@ -104,6 +124,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   // Handle drag-drop files -> preview directly
   const handleFilesLoaded = useCallback((sets: ParsedSpineSet[]) => {
     if (sets.length === 0) return;
+    setActiveSets(sets);
     const first = sets[0];
     setPreviewFiles(first.spineFiles);
     setPreviewMajor(first.majorVersion);
@@ -180,9 +201,176 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setPreviewMaximized((m) => !m);
     setPreviewCollapsed(false);
   }, []);
+  const [pendingThumbnail, setPendingThumbnail] = useState<string | null>(null);
+
+  const handleOpenImportDialog = async () => {
+    if (viewerRef.current) {
+      try {
+        const thumb = await viewerRef.current.captureThumbnail();
+        setPendingThumbnail(thumb);
+      } catch (e) {
+        console.warn('Failed to capture thumbnail', e);
+      }
+    }
+    setShowImportDialog(true);
+  };
+
+  const handleConfirmImport = useCallback(async (result: ImportResult) => {
+    setLoadingChar(true);
+    setShowImportDialog(false);
+    try {
+      const supabase = createClient();
+      for (const item of result.selectedItems) {
+        const charData: Omit<Character, 'id' | 'created_at'> = {
+          user_id: '',
+          name: item.name,
+          json_name: item.spineSet.spineFiles.jsonName,
+          asset_type: 'spine',
+          mime_type: 'application/json',
+          spine_version: `${item.spineSet.majorVersion}.${item.spineSet.minorVersion}`,
+          major_version: item.spineSet.majorVersion,
+          minor_version: item.spineSet.minorVersion,
+          json_text: item.spineSet.spineFiles.jsonText,
+          atlas_text: item.spineSet.spineFiles.atlasText,
+          bone_count: item.spineSet.boneCount,
+          slot_count: item.spineSet.slotCount,
+          anim_count: item.spineSet.animCount,
+          anim_names: item.spineSet.animNames,
+          skin_count: item.spineSet.skinCount,
+          file_size: item.fileSize,
+          json_size: new Blob([item.spineSet.spineFiles.jsonText]).size,
+          atlas_size: new Blob([item.spineSet.spineFiles.atlasText]).size,
+          png_sizes: Array.from(item.spineSet.spineFiles.pngBlobs.entries()).map(([name, blob]) => ({ name, size: blob.size })),
+          tags: result.assetTags,
+          notes: result.notes,
+          status: 'draft',
+          project_id: result.projectId,
+          collection_ids: [],
+          json_path: null,
+          atlas_path: null,
+          png_paths: [],
+          imported_at: new Date().toISOString(),
+          last_viewed_at: new Date().toISOString(),
+          thumbnail: pendingThumbnail
+        };
+        const charId = await saveCharacter(charData);
+
+        // Try R2 upload, if it fails, store PNGs as base64 data URLs in DB
+        let uploadOk = false;
+        try {
+           const jsonBlob = new Blob([item.spineSet.spineFiles.jsonText]);
+           const atlasBlob = new Blob([item.spineSet.spineFiles.atlasText]);
+           const pngs = Array.from(item.spineSet.spineFiles.pngBlobs.entries()).map(([n, b]) => ({ name: n, blob: b }));
+           const paths = await uploadSpineFiles(charId, jsonBlob, atlasBlob, pngs, item.spineSet.spineFiles.jsonName);
+           await supabase.from('characters').update({ json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths }).eq('id', charId);
+           uploadOk = true;
+        } catch(e) {
+           console.warn('R2 upload failed, storing PNGs as base64 in DB', e);
+        }
+
+        // Fallback: embed PNGs as base64 data URLs into png_paths
+        if (!uploadOk) {
+          try {
+            const base64Paths: string[] = [];
+            for (const [filename, blob] of item.spineSet.spineFiles.pngBlobs) {
+              const arrayBuf = await blob.arrayBuffer();
+              const bytes = new Uint8Array(arrayBuf);
+              // Chunked base64 encoding (avoid stack overflow with large PNGs)
+              let binary = '';
+              const chunkSize = 8192;
+              for (let i = 0; i < bytes.length; i += chunkSize) {
+                const chunk = bytes.subarray(i, i + chunkSize);
+                binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+              }
+              const base64 = btoa(binary);
+              base64Paths.push(`data:image/png;name=${filename};base64,${base64}`);
+            }
+            await supabase.from('characters').update({ png_paths: base64Paths }).eq('id', charId);
+          } catch (e2) {
+            console.warn('Base64 PNG storage also failed', e2);
+          }
+        }
+      }
+      router.refresh();
+      // Keep preview visible — only clear activeSets to hide "Save to Library" button
+      setActiveSets([]);
+      setPendingThumbnail(null);
+    } catch (err: any) {
+      setPreviewError(err?.message || 'Import failed');
+    } finally {
+      setLoadingChar(false);
+    }
+  }, [router, pendingThumbnail]);
+
+  const handleDeleteChar = useCallback(async (char: Character) => {
+    if (!confirm(`Delete "${char.name}" from library?`)) return;
+    try {
+      await deleteCharacter(char.id);
+      if (selectedChar?.id === char.id) {
+        setSelectedChar(null);
+        setPreviewFiles(null);
+      }
+      router.refresh();
+    } catch (e) {
+      console.error('Delete failed', e);
+    }
+  }, [selectedChar, router]);
+
+  const handleUpdateChar = useCallback(async (updates: Partial<Character>, newProject?: { code: string; name: string; color: string }) => {
+    if (!selectedChar) return;
+    try {
+      const supabase = createClient();
+      let projectId = updates.project_id;
+      if (newProject) {
+        const { data: projData, error: projErr } = await supabase.from('projects').insert([
+          { code: newProject.code, name: newProject.name, color: newProject.color }
+        ]).select('id').single();
+        if (projData) projectId = projData.id;
+      }
+      const finalUpdates = { ...updates, project_id: projectId };
+      await supabase.from('characters').update(finalUpdates).eq('id', selectedChar.id);
+      setSelectedChar({ ...selectedChar, ...finalUpdates });
+      router.refresh();
+    } catch(e) {
+      console.error('Update failed', e);
+    }
+  }, [selectedChar, router]);
+
+  const handleFileInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    if (!input.files || input.files.length === 0) return;
+    setLoadingChar(true);
+    setPreviewError(null);
+    try {
+      const files = Array.from(input.files);
+      const jsonFiles = files.filter(f => f.name.toLowerCase().endsWith('.json') || f.name.toLowerCase().endsWith('.skel'));
+      const sets: ParsedSpineSet[] = [];
+      for (const jf of jsonFiles) {
+        const result = await parseSpineSet(jf, files);
+        if (result) sets.push(result);
+      }
+      if (sets.length > 0) handleFilesLoaded(sets);
+      else setPreviewError('No valid Spine files found in selection');
+    } catch (err) {
+      console.error('[IMPORT] Error parsing selections:', err);
+      setPreviewError('Failed to parse selected files');
+    } finally {
+      input.value = ''; // Reset to allow re-selecting same files
+      setLoadingChar(false);
+    }
+  }, [handleFilesLoaded]);
 
   return (
     <div id="main-layout" className="flex flex-1 overflow-hidden">
+      <input 
+        id="hidden-file-input" 
+        type="file" 
+        multiple 
+        accept=".json,.skel,.atlas,.atlas.txt,.png" 
+        className="hidden" 
+        onChange={handleFileInput} 
+        style={{ display: 'none' }} 
+      />
       {/* Left: Library Panel */}
       <div
         className="flex flex-col bg-bg overflow-hidden"
@@ -206,7 +394,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
               )}
             </div>
             <div className="flex-1 overflow-y-auto">
-              <LibraryGrid characters={initialCharacters} onCardClick={handleCardClick} selectedId={selectedChar?.id} />
+              <LibraryGrid characters={initialCharacters} onCardClick={handleCardClick} onDelete={handleDeleteChar} selectedId={selectedChar?.id} />
             </div>
           </div>
         </div>
@@ -248,7 +436,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
               )}
             </>
           )}
-          <button onClick={toggleMaximize} className="rounded p-1 text-dim hover:bg-accent hover:text-white" title={previewMaximized ? 'Restore' : 'Maximize'}>
+          {!selectedChar && hasPreview && activeSets.length > 0 && (
+             <button onClick={handleOpenImportDialog} className="ml-2 flex items-center gap-1.5 rounded bg-gradient-to-br from-accent to-[#6d4fde] px-2.5 py-1 text-[11px] font-bold text-white hover:scale-105 shadow transition-all mr-auto">
+               <Save size={12} /> Save to Library
+             </button>
+          )}
+          <button onClick={toggleMaximize} className="rounded p-1 text-dim hover:bg-accent hover:text-white mt-auto mb-auto ml-auto" title={previewMaximized ? 'Restore' : 'Maximize'}>
             {previewMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </button>
           {!previewMaximized && (
@@ -336,11 +529,20 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
             </div>
             {/* Right: Properties */}
             <div className="flex flex-col overflow-hidden" style={{ flex: 1, background: 'var(--panel-secondary)', minWidth: 0 }}>
-              <ViewerProperties character={selectedChar} />
+              <ViewerProperties character={selectedChar} projects={initialProjects} collections={initialCollections} onUpdate={handleUpdateChar} />
             </div>
           </div>
         )}
       </div>
+      
+      {showImportDialog && (
+        <ImportDialog 
+          sets={activeSets} 
+          projects={initialProjects} 
+          onConfirm={handleConfirmImport} 
+          onCancel={() => setShowImportDialog(false)} 
+        />
+      )}
     </div>
   );
 }

@@ -7,7 +7,16 @@ interface Props { projects: Project[]; collections: Collection[]; }
 
 export function LibrarySidebar({ projects, collections }: Props) {
   const { sidebarCollapsed, toggleSidebar, filterType, setFilterType, filterProjectId, setFilterProjectId } = useAppStore();
-  if (sidebarCollapsed) return null;
+
+  if (sidebarCollapsed) {
+    return (
+      <div className="flex w-12 shrink-0 flex-col items-center border-r border-border bg-panel-secondary py-4">
+        <button onClick={toggleSidebar} className="text-text opacity-60 hover:opacity-100" aria-label="Toggle sidebar">
+          <Menu className="h-4.5 w-4.5" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-55 shrink-0 flex-col border-r border-border bg-panel-secondary">

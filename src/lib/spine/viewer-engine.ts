@@ -157,7 +157,20 @@ export class SpineViewerEngine {
     } else {
       this.renderWebGL(delta);
     }
+
+    if (this._captureResolve && this.state.canvas) {
+      const dataUrl = this.state.canvas.toDataURL('image/webp', 0.8);
+      this._captureResolve(dataUrl);
+      this._captureResolve = null;
+    }
   };
+
+  private _captureResolve: ((dataUrl: string) => void) | null = null;
+  captureThumbnail(): Promise<string> {
+    return new Promise((resolve) => {
+      this._captureResolve = resolve;
+    });
+  }
 
   // ── Canvas2D Rendering (Spine 3.x) ───────────────────────────
   private renderCanvas2D(delta: number) {

@@ -14,7 +14,7 @@ export function LibrarySearch() {
       <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="shrink-0 rounded-md border border-border bg-panel-secondary px-2.5 py-1.5 text-xs text-text outline-none">
         <option value="date-desc">Newest</option><option value="date-asc">Oldest</option><option value="name-asc">A→Z</option><option value="name-desc">Z→A</option>
       </select>
-      <button className="flex shrink-0 items-center gap-1.5 rounded-md bg-gradient-to-br from-accent to-[#6d4fde] px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 hover:shadow-lg">
+      <button onClick={() => document.getElementById('hidden-file-input')?.click()} className="flex shrink-0 items-center gap-1.5 rounded-md bg-gradient-to-br from-accent to-[#6d4fde] px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 hover:shadow-lg">
         <Upload className="h-3.5 w-3.5" /> IMPORT
       </button>
     </div>

@@ -10,10 +10,18 @@ export function useAuth() {
 
   useEffect(() => {
     const loadProfile = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        if (data) setProfile(data as Profile);
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error) {
+          await supabase.auth.signOut();
+          return;
+        }
+        if (user) {
+          const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+          if (data) setProfile(data as Profile);
+        }
+      } catch (e) {
+        await supabase.auth.signOut();
       }
     };
     loadProfile();

@@ -7,14 +7,25 @@ import { PackageOpen } from 'lucide-react';
 interface Props {
   characters: Character[];
   onCardClick?: (character: Character) => void;
+  onDelete?: (character: Character) => void;
   selectedId?: number;
 }
 
-export function LibraryGrid({ characters, onCardClick, selectedId }: Props) {
-  const { searchQuery, filterProjectId, filterType } = useAppStore();
+export function LibraryGrid({ characters, onCardClick, onDelete, selectedId }: Props) {
+  const { searchQuery, filterProjectId, filterType, sortBy } = useAppStore();
   let filtered = characters;
   if (searchQuery) { const q = searchQuery.toLowerCase(); filtered = filtered.filter((c) => c.name.toLowerCase().includes(q) || c.json_name.toLowerCase().includes(q)); }
   if (filterType === 'project' && filterProjectId) filtered = filtered.filter((c) => c.project_id === filterProjectId);
+
+  filtered = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case 'date-desc': return new Date(b.imported_at || 0).getTime() - new Date(a.imported_at || 0).getTime();
+      case 'date-asc': return new Date(a.imported_at || 0).getTime() - new Date(b.imported_at || 0).getTime();
+      case 'name-asc': return a.name.localeCompare(b.name);
+      case 'name-desc': return b.name.localeCompare(a.name);
+      default: return 0;
+    }
+  });
 
   if (filtered.length === 0) return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
@@ -25,7 +36,7 @@ export function LibraryGrid({ characters, onCardClick, selectedId }: Props) {
 
   return (
     <div className="grid auto-rows-min justify-center gap-3 p-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, 140px)' }}>
-      {filtered.map((c) => <LibraryCard key={c.id} character={c} onClick={onCardClick} isSelected={selectedId === c.id} />)}
+      {filtered.map((c) => <LibraryCard key={c.id} character={c} onClick={onCardClick} onDelete={onDelete} isSelected={selectedId === c.id} />)}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
-import { Loader2, LogIn, UserPlus, KeyRound } from 'lucide-react';
+import { Loader2, LogIn, UserPlus, KeyRound, Eye, EyeOff } from 'lucide-react';
 
 type AuthView = 'login' | 'signup' | 'forgot';
 
@@ -10,6 +10,7 @@ export function AuthForm() {
   const [view, setView] = useState<AuthView>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -79,9 +80,15 @@ export function AuthForm() {
           autoComplete={view === 'login' ? 'username' : 'email'}
           className="w-full rounded-lg border border-border bg-panel-secondary px-4 py-2.5 text-sm text-text outline-none placeholder:text-dim focus:border-accent" />
         {view !== 'forgot' && (
-          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
-            autoComplete={view === 'login' ? 'current-password' : 'new-password'}
-            className="w-full rounded-lg border border-border bg-panel-secondary px-4 py-2.5 text-sm text-text outline-none placeholder:text-dim focus:border-accent" />
+          <div className="relative">
+            <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
+              autoComplete={view === 'login' ? 'current-password' : 'new-password'}
+              className="w-full rounded-lg border border-border bg-panel-secondary px-4 py-2.5 text-sm text-text outline-none placeholder:text-dim focus:border-accent" />
+            <button type="button" onClick={() => setShowPassword(p => !p)} tabIndex={-1}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-dim hover:text-white transition-colors">
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         )}
         {error && <p className="rounded-md bg-red/10 px-3 py-2 text-xs text-red">{error}</p>}
         {success && <p className="rounded-md bg-green/10 px-3 py-2 text-xs text-green">{success}</p>}
