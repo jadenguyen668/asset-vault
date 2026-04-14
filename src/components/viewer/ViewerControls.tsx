@@ -48,12 +48,39 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
     viewerRef.current?.setSkin(name);
   }, [viewerRef]);
 
-  const togglePlay = useCallback(() => {
-    const next = !playing;
-    setPlaying(next);
-    if (playbackConfigRef) playbackConfigRef.current.playing = next;
-    viewerRef.current?.engine?.setPlaying(next);
-  }, [playing, viewerRef, playbackConfigRef]);
+  const handlePlayForward = useCallback(() => {
+    if (playing && !reversing) {
+      setPlaying(false);
+      if (playbackConfigRef) playbackConfigRef.current.playing = false;
+      viewerRef.current?.engine?.setPlaying(false);
+    } else {
+      setPlaying(true);
+      setReversing(false);
+      if (playbackConfigRef) {
+        playbackConfigRef.current.playing = true;
+        playbackConfigRef.current.reversing = false;
+      }
+      viewerRef.current?.engine?.setSpeed(speed);
+      viewerRef.current?.engine?.setPlaying(true);
+    }
+  }, [playing, reversing, speed, viewerRef, playbackConfigRef]);
+
+  const handlePlayBackward = useCallback(() => {
+    if (playing && reversing) {
+      setPlaying(false);
+      if (playbackConfigRef) playbackConfigRef.current.playing = false;
+      viewerRef.current?.engine?.setPlaying(false);
+    } else {
+      setPlaying(true);
+      setReversing(true);
+      if (playbackConfigRef) {
+        playbackConfigRef.current.playing = true;
+        playbackConfigRef.current.reversing = true;
+      }
+      viewerRef.current?.engine?.setSpeed(-speed);
+      viewerRef.current?.engine?.setPlaying(true);
+    }
+  }, [playing, reversing, speed, viewerRef, playbackConfigRef]);
 
   const toggleLoop = useCallback(() => {
     const next = !looping;
@@ -61,13 +88,6 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
     if (playbackConfigRef) playbackConfigRef.current.looping = next;
     viewerRef.current?.engine?.setLoop(next);
   }, [looping, viewerRef, playbackConfigRef]);
-
-  const toggleReverse = useCallback(() => {
-    const next = !reversing;
-    setReversing(next);
-    if (playbackConfigRef) playbackConfigRef.current.reversing = next;
-    viewerRef.current?.engine?.setSpeed(speed * (next ? -1 : 1));
-  }, [reversing, speed, viewerRef, playbackConfigRef]);
 
   const handleSpeedChange = useCallback((val: number) => {
     setSpeed(val);
@@ -122,10 +142,13 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
           </select>
         )}
         <div className="flex gap-1">
-          <button onClick={togglePlay} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white">
-            {playing ? <Pause size={12} /> : <Play size={12} />}
+          <button onClick={handlePlayBackward} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${(playing && reversing) ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title={(playing && reversing) ? 'Pause' : 'Reverse Play'}>
+            {(playing && reversing) ? <Pause size={12} /> : <Play size={12} style={{ transform: 'rotate(180deg)' }} />}
           </button>
-          <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`}>
+          <button onClick={handlePlayForward} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${(playing && !reversing) ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title={(playing && !reversing) ? 'Pause' : 'Play'}>
+            {(playing && !reversing) ? <Pause size={12} /> : <Play size={12} />}
+          </button>
+          <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title="Loop">
             <Repeat size={12} />
           </button>
           {!globalBgImage ? (
@@ -150,11 +173,11 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
             </select>
           )}
           <div className="flex gap-1" style={{ width: 'fit-content' }}>
-            <button onClick={toggleReverse} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${reversing ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title="Reverse Play">
-              <Rewind size={12} />
+            <button onClick={handlePlayBackward} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${(playing && reversing) ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title={(playing && reversing) ? 'Pause' : 'Reverse Play'}>
+              {(playing && reversing) ? <Pause size={12} /> : <Play size={12} style={{ transform: 'rotate(180deg)' }} />}
             </button>
-            <button onClick={togglePlay} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white" title={playing ? 'Pause' : 'Play'}>
-              {playing ? <Pause size={12} /> : <Play size={12} />}
+            <button onClick={handlePlayForward} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${(playing && !reversing) ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title={(playing && !reversing) ? 'Pause' : 'Play'}>
+              {(playing && !reversing) ? <Pause size={12} /> : <Play size={12} />}
             </button>
             <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title="Loop">
               <Repeat size={12} />
@@ -214,11 +237,11 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
         <div className="control-group">
           <label className="control-label">Playback</label>
           <div className="control-row">
-            <button onClick={toggleReverse} className={`control-btn ${reversing ? 'active' : ''}`} title="Reverse Play">
-              <Rewind size={14} />
+            <button onClick={handlePlayBackward} className={`control-btn ${(playing && reversing) ? 'active' : ''}`} title={(playing && reversing) ? 'Pause' : 'Reverse Play'}>
+              {(playing && reversing) ? <Pause size={14} /> : <Play size={14} style={{ transform: 'rotate(180deg)' }} />}
             </button>
-            <button onClick={togglePlay} className="control-btn" title={playing ? 'Pause' : 'Play'}>
-              {playing ? <Pause size={14} /> : <Play size={14} />}
+            <button onClick={handlePlayForward} className={`control-btn ${(playing && !reversing) ? 'active' : ''}`} title={(playing && !reversing) ? 'Pause' : 'Play'}>
+              {(playing && !reversing) ? <Pause size={14} /> : <Play size={14} />}
             </button>
             <button onClick={toggleLoop} className={`control-btn ${looping ? 'active' : ''}`} title="Loop">
               <Repeat size={14} />
