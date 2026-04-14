@@ -116,10 +116,10 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
     const dpr = window.devicePixelRatio || 1;
     
     if (e.shiftKey) {
-      const scale = engineRef.current.getScale();
+      const baseScale = engineRef.current.getBaseScale();
       const vz = engineRef.current.getViewZoom();
-      const normDx = dx * dpr / (scale * vz);
-      const normDy = dy * dpr / (scale * vz);
+      const normDx = dx * dpr / (baseScale * vz);
+      const normDy = dy * dpr / (baseScale * vz);
       engineRef.current.setBgOffset(normDx, normDy);
       if (bgConfigRef?.current) {
         bgConfigRef.current.offsetX += normDx;
@@ -132,13 +132,31 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
 
   const handleMouseUp = useCallback(() => { isDragging.current = false; }, []);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (!engineRef.current) return;
-    e.preventDefault();
-    const zoom = engineRef.current.getViewZoom();
-    const factor = e.deltaY > 0 ? 0.9 : 1.1;
-    engineRef.current.setViewZoom(zoom * factor);
-  }, []);
+  // Use native event listener for wheel to allow preventDefault (React onWheel is passive)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!engineRef.current) return;
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      if (e.shiftKey) {
+        const state = engineRef.current.getBgState();
+        if (state) {
+          const newScale = state.scale * factor;
+          engineRef.current.setBgScale(newScale);
+          if (bgConfigRef?.current) {
+            bgConfigRef.current.scale = newScale;
+          }
+        }
+      } else {
+        const zoom = engineRef.current.getViewZoom();
+        engineRef.current.setViewZoom(zoom * factor);
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [bgConfigRef]);
 
   return (
     <div className={`spine-viewer-wrapper ${className || ''}`} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#1a1a2e' }}>
@@ -149,7 +167,6 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       />
       {loading && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', zIndex: 10 }}>

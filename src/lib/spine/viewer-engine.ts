@@ -23,6 +23,7 @@ interface ViewerState {
   loop: boolean;
   speed: number;
   scale: number;
+  baseScale: number;
   viewZoom: number;
   bgColor: string;
   bgImage: HTMLImageElement | null;
@@ -98,7 +99,7 @@ export class SpineViewerEngine {
       ctx2d: null,
       gl: null,
       skeleton: null, animState: null, renderer: null,
-      playing: true, loop: true, speed: 1, scale: 1, viewZoom: 1,
+      playing: true, loop: true, speed: 1, scale: 1, baseScale: 1, viewZoom: 1,
       bgColor: '#1a1a2e',
       bgImage: null,
       bgOffsetX: 0, bgOffsetY: 0, bgScale: 1,
@@ -201,11 +202,13 @@ export class SpineViewerEngine {
     ctx2d.translate(-w / 2, -h / 2);
 
     if (this.state.bgImage) {
-      const bgDisplayScale = this.state.scale * this.state.bgScale;
+      const bgDisplayScale = this.state.baseScale * this.state.bgScale;
       const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
       const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
-      const bx = w / 2 - imgW / 2 + this.state.bgOffsetX * this.state.scale;
-      const by = h * 0.85 - imgH / 2 + this.state.bgOffsetY * this.state.scale;
+      const bgOriginX = w / 2 + this.state.offsetX;
+      const bgOriginY = h * 0.85 + this.state.offsetY;
+      const bx = bgOriginX - imgW / 2 + this.state.bgOffsetX * this.state.baseScale;
+      const by = bgOriginY - imgH / 2 + this.state.bgOffsetY * this.state.baseScale;
       ctx2d.drawImage(this.state.bgImage, bx, by, imgW, imgH);
     }
 
@@ -314,11 +317,13 @@ export class SpineViewerEngine {
         this.bgImageSrc = this.state.bgImage.src;
       }
       if (this.bgGlTexture) {
-        const bgDisplayScale = this.state.scale * this.state.bgScale;
+        const bgDisplayScale = this.state.baseScale * this.state.bgScale;
         const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
         const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
-        const bx = w / 2 - imgW / 2 + this.state.bgOffsetX * this.state.scale;
-        const by = h * 0.2 - imgH / 2 - this.state.bgOffsetY * this.state.scale;
+        const bgOriginX = w / 2 + this.state.offsetX;
+        const bgOriginY = h * 0.2 - this.state.offsetY;
+        const bx = bgOriginX - imgW / 2 + this.state.bgOffsetX * this.state.baseScale;
+        const by = bgOriginY - imgH / 2 - this.state.bgOffsetY * this.state.baseScale;
         this.state.renderer.drawTexture(this.bgGlTexture, bx, by, imgW, imgH);
       }
     }
@@ -516,7 +521,8 @@ export class SpineViewerEngine {
       const offset = new spine.Vector2(), size = new spine.Vector2();
       skeleton.getBounds(offset, size, []);
       this.state.scale = Math.min((this.state.canvas.height * 0.6) / (size.y || 400), 2);
-    } catch { this.state.scale = 0.5; }
+      this.state.baseScale = this.state.scale;
+    } catch { this.state.scale = 0.5; this.state.baseScale = 0.5; }
 
     const stateData = new spine.AnimationStateData(skeletonData);
     stateData.defaultMix = 0.2;
@@ -652,7 +658,8 @@ export class SpineViewerEngine {
     try {
       const bounds = skeleton.getBoundsRect();
       this.state.scale = Math.min((this.state.canvas.height * 0.6) / (bounds.height || 400), 2);
-    } catch { this.state.scale = 0.5; }
+      this.state.baseScale = this.state.scale;
+    } catch { this.state.scale = 0.5; this.state.baseScale = 0.5; }
 
     const stateData = new spine4.AnimationStateData(skeletonData);
     stateData.defaultMix = 0.2;
@@ -709,6 +716,7 @@ export class SpineViewerEngine {
 
   setSpeed(s: number) { if (this.state) this.state.speed = s; }
   setScale(s: number) { if (this.state) this.state.scale = s; }
+  getBaseScale(): number { return this.state?.baseScale ?? 1; }
   setViewZoom(z: number) { if (this.state) this.state.viewZoom = Math.max(0.1, Math.min(10, z)); }
   getViewZoom(): number { return this.state?.viewZoom ?? 1; }
   setPlaying(p: boolean) { if (this.state) this.state.playing = p; }
@@ -742,6 +750,9 @@ export class SpineViewerEngine {
     this.state.bgOffsetX = config.offsetX;
     this.state.bgOffsetY = config.offsetY;
     this.state.bgScale = config.scale;
+  }
+  setBgScale(scale: number) {
+    if (this.state) { this.state.bgScale = scale; }
   }
   getScale(): number { return this.state?.scale ?? 1; }
   isPlaying(): boolean { return this.state?.playing ?? false; }

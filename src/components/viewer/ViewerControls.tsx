@@ -116,7 +116,7 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
             <Repeat size={12} />
           </button>
           {!globalBgImage ? (
-            <button onClick={() => bgInputRef.current?.click()} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white" title="Upload Background (Shift+Drag to move)">
+            <button onClick={() => bgInputRef.current?.click()} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white" title="Upload Background (Shift+Drag to move, Shift+Scroll to zoom)">
               <ImageIcon size={12} />
             </button>
           ) : (
@@ -213,7 +213,7 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
       <div className="control-group">
         <label className="control-label">Background</label>
         <div className="control-row">
-          <button onClick={() => bgInputRef.current?.click()} className="control-btn" title="Upload Background (Hold Shift + Drag to move it)" style={{ flex: 1, gap: '4px', width: 'auto' }}>
+          <button onClick={() => bgInputRef.current?.click()} className="control-btn" title="Upload Background (Shift+Drag = move, Shift+Scroll = zoom)" style={{ flex: 1, gap: '4px', width: 'auto' }}>
             <ImageIcon size={14} /> <span style={{ fontSize: 11 }}>Load BG</span>
           </button>
           {globalBgImage && (
