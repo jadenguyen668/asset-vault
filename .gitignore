@@ -9,3 +9,6 @@ tsconfig.tsbuildinfo
 *.local
 .env
 .env.local
+
+# reference assets
+reference/

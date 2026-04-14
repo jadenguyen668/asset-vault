@@ -6,13 +6,14 @@ import { LibraryGrid } from './LibraryGrid';
 import { LibrarySearch } from './LibrarySearch';
 import { DropZone, getFilesFromDrop, parseSpineSet, type ParsedSpineSet } from './DropZone';
 import SpineViewer, { type SpineViewerHandle } from '@/components/viewer/SpineViewer';
+import { SpineGridViewer } from '@/components/viewer/SpineGridViewer';
 import { ViewerControls } from '@/components/viewer/ViewerControls';
 import { PanelResizer } from '@/components/layout/PanelResizer';
 import type { Character, Project, Collection } from '@/types/database';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 import { downloadFile } from '@/lib/storage/r2';
 import { ViewerProperties } from '@/components/viewer/ViewerProperties';
-import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save } from 'lucide-react';
+import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save, LayoutGrid, LayoutPanelLeft } from 'lucide-react';
 import { ImportDialog, type ImportResult } from './ImportDialog';
 import { uploadSpineFiles } from '@/lib/storage/r2';
 import { saveCharacter, deleteCharacter } from '@/lib/db/characters';
@@ -50,6 +51,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   }, []);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [previewMaximized, setPreviewMaximized] = useState(false);
+  const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
+  const [targetAnimation, setTargetAnimation] = useState<string | null>(null);
 
   // Handle card click -> load character in preview (fetch PNGs from R2)
   const handleCardClick = useCallback(async (char: Character) => {
@@ -447,7 +450,25 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                <Save size={12} /> Save to Library
              </button>
           )}
-          <button onClick={toggleMaximize} className="rounded p-1 text-dim hover:bg-accent hover:text-white mt-auto mb-auto ml-auto" title={previewMaximized ? 'Restore' : 'Maximize'}>
+          {hasPreview && animations.length > 0 && (
+            <div className="flex border border-border rounded bg-panel-secondary ml-auto mr-2">
+              <button 
+                onClick={() => setViewMode('single')} 
+                className={`p-1 ${viewMode === 'single' ? 'bg-accent text-white' : 'text-dim hover:text-white'} transition-colors rounded-l`}
+                title="Single View"
+              >
+                <LayoutPanelLeft className="h-3.5 w-3.5" />
+              </button>
+              <button 
+                onClick={() => setViewMode('grid')} 
+                className={`p-1 ${viewMode === 'grid' ? 'bg-accent text-white' : 'text-dim hover:text-white'} transition-colors rounded-r`}
+                title="Grid View"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          <button onClick={toggleMaximize} className={`rounded p-1 text-dim hover:bg-accent hover:text-white mt-auto mb-auto ${hasPreview && animations.length > 0 ? '' : 'ml-auto'}`} title={previewMaximized ? 'Restore' : 'Maximize'}>
             {previewMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </button>
           {!previewMaximized && (
@@ -484,14 +505,28 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
           {/* Spine Viewer (when file loaded) */}
           {hasPreview && (
-            <SpineViewer
-              ref={viewerRef}
-              spineFiles={previewFiles}
-              majorVersion={previewMajor}
-              minorVersion={previewMinor}
-              onLoaded={handleViewerLoaded}
-              onError={handleViewerError}
-            />
+            viewMode === 'grid' ? (
+              <SpineGridViewer
+                spineFiles={previewFiles!}
+                majorVersion={previewMajor}
+                minorVersion={previewMinor}
+                animations={animations}
+                onSelectAnimation={(anim) => { 
+                  setTargetAnimation(anim); 
+                  setViewMode('single'); 
+                }}
+              />
+            ) : (
+              <SpineViewer
+                ref={viewerRef}
+                spineFiles={previewFiles}
+                majorVersion={previewMajor}
+                minorVersion={previewMinor}
+                onLoaded={handleViewerLoaded}
+                onError={handleViewerError}
+                initialAnimation={targetAnimation || undefined}
+              />
+            )
           )}
 
           {/* Empty state hint */}
@@ -507,7 +542,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         {previewMaximized ? (
           (animations.length > 0 || skins.length > 0) && (
             <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact />
+              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} />
             </div>
           )
         ) : (
@@ -515,7 +550,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
             {/* Left: Controls */}
             <div className="flex flex-col gap-2 overflow-y-auto border-r border-border p-2.5" style={{ flex: 1, background: 'var(--panel)', minWidth: 0 }}>
               {hasPreview && (animations.length > 0 || skins.length > 0) ? (
-                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} />
+                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} initialAnimation={targetAnimation || undefined} />
               ) : (
                 <div className="flex flex-1 flex-col gap-3 p-1">
                   <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Animation</span>

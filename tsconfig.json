@@ -39,6 +39,7 @@
     "node_modules",
     "_vite_backup",
     "worker",
-    "src/_legacy"
+    "src/_legacy",
+    "reference"
   ]
 }

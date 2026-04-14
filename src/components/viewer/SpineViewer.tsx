@@ -19,10 +19,11 @@ interface SpineViewerProps {
   className?: string;
   onLoaded?: (info: { animations: string[]; skins: string[] }) => void;
   onError?: (error: string) => void;
+  initialAnimation?: string;
 }
 
 const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function SpineViewer(
-  { spineFiles, majorVersion, minorVersion, className, onLoaded, onError },
+  { spineFiles, majorVersion, minorVersion, className, onLoaded, onError, initialAnimation },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,7 +60,7 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
       setLoading(true);
       setError(null);
       try {
-        await engineRef.current!.loadSpine(spineFiles, majorVersion, minorVersion);
+        await engineRef.current!.loadSpine(spineFiles, majorVersion, minorVersion, initialAnimation);
         if (cancelled) return;
         const anims = engineRef.current!.getAnimations();
         const skins = engineRef.current!.getSkins();
@@ -76,7 +77,7 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
 
     load();
     return () => { cancelled = true; };
-  }, [spineFiles, majorVersion, minorVersion, onLoaded, onError]);
+  }, [spineFiles, majorVersion, minorVersion, onLoaded, onError, initialAnimation]);
 
   // Mouse interaction: pan (drag) + zoom (wheel)
   const isDragging = useRef(false);

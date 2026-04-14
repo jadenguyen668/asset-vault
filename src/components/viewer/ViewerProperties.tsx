@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import type { Character, Project, Collection } from '@/types/database';
+import type { Character, Project, Collection, AssetStatus } from '@/types/database';
 import { Box, Calendar, FileText, Tag, Bone, Layers, Film, HardDrive, Edit2, Save, X, FolderOpen } from 'lucide-react';
 
 interface Props {
@@ -19,7 +19,7 @@ export function ViewerProperties({ character, projects = [], collections = [], o
   
   // States
   const [editName, setEditName] = useState('');
-  const [editStatus, setEditStatus] = useState('');
+  const [editStatus, setEditStatus] = useState<AssetStatus>('draft');
   const [editTags, setEditTags] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editProject, setEditProject] = useState<string>('');
@@ -39,7 +39,7 @@ export function ViewerProperties({ character, projects = [], collections = [], o
   useEffect(() => {
     if (character) {
       setEditName(character.name || '');
-      setEditStatus(character.status || 'draft');
+      setEditStatus((character.status as AssetStatus) || 'draft');
       setEditTags((character.tags || []).join(', '));
       setEditNotes(character.notes || '');
       setEditProject(character.project_id ? String(character.project_id) : '');
@@ -292,7 +292,7 @@ export function ViewerProperties({ character, projects = [], collections = [], o
           {isEditing ? (
              <select 
                value={editStatus} 
-               onChange={e => setEditStatus(e.target.value)}
+               onChange={e => setEditStatus(e.target.value as AssetStatus)}
                className="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-xs text-text outline-none focus:border-accent"
              >
                <option value="draft">Draft</option>

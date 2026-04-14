@@ -8,18 +8,23 @@ interface ViewerControlsProps {
   animations: string[];
   skins: string[];
   compact?: boolean;
+  initialAnimation?: string;
 }
 
-export function ViewerControls({ viewerRef, animations, skins, compact }: ViewerControlsProps) {
-  const [currentAnim, setCurrentAnim] = useState(animations[0] || '');
+export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation }: ViewerControlsProps) {
+  const [currentAnim, setCurrentAnim] = useState(initialAnimation || animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
   const [playing, setPlaying] = useState(true);
   const [looping, setLooping] = useState(true);
   const [speed, setSpeed] = useState(1);
 
   useEffect(() => {
-    if (animations.length > 0 && !currentAnim) setCurrentAnim(animations[0]);
-  }, [animations, currentAnim]);
+    if (initialAnimation && animations.includes(initialAnimation)) {
+      setCurrentAnim(initialAnimation);
+    } else if (animations.length > 0 && !currentAnim) {
+      setCurrentAnim(animations[0]);
+    }
+  }, [animations, initialAnimation, currentAnim]);
 
   useEffect(() => {
     if (skins.length > 0 && !currentSkin) setCurrentSkin(skins[0]);

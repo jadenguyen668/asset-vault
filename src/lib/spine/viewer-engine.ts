@@ -346,7 +346,7 @@ export class SpineViewerEngine {
   }
 
   // ── Load Spine ────────────────────────────────────────────────
-  async loadSpine(files: SpineFiles, detectedMajor: number, detectedMinor: number = 8): Promise<void> {
+  async loadSpine(files: SpineFiles, detectedMajor: number, detectedMinor: number = 8, initialAnimation?: string): Promise<void> {
     if (!this.state) return;
     this.renderErrorLogged = false;
     this.blendDebugDone = false;
@@ -388,7 +388,11 @@ export class SpineViewerEngine {
     }
 
     const anims = this.getAnimations();
-    if (anims.length > 0) this.playAnimation(anims[0]);
+    if (initialAnimation && anims.includes(initialAnimation)) {
+      this.playAnimation(initialAnimation);
+    } else if (anims.length > 0) {
+      this.playAnimation(anims[0]);
+    }
   }
 
   // ── Spine 3.x: Canvas2D ──────────────────────────────────────
