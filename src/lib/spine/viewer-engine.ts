@@ -222,7 +222,7 @@ export class SpineViewerEngine {
     ctx2d.beginPath(); ctx2d.moveTo(originX, originY - ext); ctx2d.lineTo(originX, originY + ext); ctx2d.stroke();
 
     ctx2d.translate(w / 2 + this.state.offsetX, h * 0.85 + this.state.offsetY);
-    ctx2d.scale(this.state.scale, -this.state.scale);
+    ctx2d.scale(this.state.baseScale * this.state.scale, -this.state.baseScale * this.state.scale);
 
     if (this.state.playing) {
       animState.update(delta * this.state.speed);
@@ -257,8 +257,8 @@ export class SpineViewerEngine {
 
     skeleton.x = w / 2 + this.state.offsetX;
     skeleton.y = h * 0.2 - this.state.offsetY;
-    skeleton.scaleX = this.state.scale;
-    skeleton.scaleY = this.state.scale;
+    skeleton.scaleX = this.state.baseScale * this.state.scale;
+    skeleton.scaleY = this.state.baseScale * this.state.scale;
 
     if (this.state.playing) {
       animState.update(delta * this.state.speed);
@@ -536,9 +536,9 @@ export class SpineViewerEngine {
     try {
       const offset = new spine.Vector2(), size = new spine.Vector2();
       skeleton.getBounds(offset, size, []);
-      this.state.scale = Math.min((this.state.canvas.height * 0.6) / (size.y || 400), 2);
-      this.state.baseScale = this.state.scale;
-    } catch { this.state.scale = 0.5; this.state.baseScale = 0.5; }
+      this.state.baseScale = Math.min((this.state.canvas.height * 0.6) / (size.y || 400), 2);
+      this.state.scale = 1;
+    } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 
     const stateData = new spine.AnimationStateData(skeletonData);
     stateData.defaultMix = 0.2;
@@ -673,9 +673,9 @@ export class SpineViewerEngine {
     // Auto-fit
     try {
       const bounds = skeleton.getBoundsRect();
-      this.state.scale = Math.min((this.state.canvas.height * 0.6) / (bounds.height || 400), 2);
-      this.state.baseScale = this.state.scale;
-    } catch { this.state.scale = 0.5; this.state.baseScale = 0.5; }
+      this.state.baseScale = Math.min((this.state.canvas.height * 0.6) / (bounds.height || 400), 2);
+      this.state.scale = 1;
+    } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 
     const stateData = new spine4.AnimationStateData(skeletonData);
     stateData.defaultMix = 0.2;

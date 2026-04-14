@@ -10,9 +10,10 @@ interface SpineGridViewerProps {
   onSelectAnimation?: (animName: string) => void;
   bgImage?: HTMLImageElement | null;
   bgConfigRef?: React.MutableRefObject<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>;
+  playbackConfigRef?: React.MutableRefObject<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>;
 }
 
-export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animations, onSelectAnimation, bgImage, bgConfigRef }: SpineGridViewerProps) {
+export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animations, onSelectAnimation, bgImage, bgConfigRef, playbackConfigRef }: SpineGridViewerProps) {
   return (
     <div className="flex-1 w-full h-full overflow-y-auto bg-bg p-4">
       <div 
@@ -36,6 +37,7 @@ export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animat
                 initialAnimation={anim}
                 bgImage={bgImage}
                 bgConfigRef={bgConfigRef}
+                playbackConfigRef={playbackConfigRef}
               />
             </div>
           </div>

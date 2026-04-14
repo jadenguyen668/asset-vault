@@ -13,15 +13,17 @@ interface ViewerControlsProps {
   globalBgImage?: HTMLImageElement | null;
   onBgImageChange?: (img: HTMLImageElement | null) => void;
   disableCharacterControls?: boolean;
+  playbackConfigRef?: React.MutableRefObject<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>;
 }
 
-export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls }: ViewerControlsProps) {
+export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef }: ViewerControlsProps) {
   const [currentAnim, setCurrentAnim] = useState(initialAnimation || animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
-  const [playing, setPlaying] = useState(true);
-  const [looping, setLooping] = useState(true);
-  const [reversing, setReversing] = useState(false);
-  const [speed, setSpeed] = useState(1);
+  const [playing, setPlaying] = useState(playbackConfigRef?.current?.playing ?? true);
+  const [looping, setLooping] = useState(playbackConfigRef?.current?.looping ?? true);
+  const [reversing, setReversing] = useState(playbackConfigRef?.current?.reversing ?? false);
+  const [speed, setSpeed] = useState(playbackConfigRef?.current?.speed ?? 1);
+  const [scale, setScaleVal] = useState(playbackConfigRef?.current?.scale ?? 1);
   const bgInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,32 +51,35 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
   const togglePlay = useCallback(() => {
     const next = !playing;
     setPlaying(next);
+    if (playbackConfigRef) playbackConfigRef.current.playing = next;
     viewerRef.current?.engine?.setPlaying(next);
-  }, [playing, viewerRef]);
+  }, [playing, viewerRef, playbackConfigRef]);
 
   const toggleLoop = useCallback(() => {
     const next = !looping;
     setLooping(next);
+    if (playbackConfigRef) playbackConfigRef.current.looping = next;
     viewerRef.current?.engine?.setLoop(next);
-  }, [looping, viewerRef]);
+  }, [looping, viewerRef, playbackConfigRef]);
 
   const toggleReverse = useCallback(() => {
     const next = !reversing;
     setReversing(next);
+    if (playbackConfigRef) playbackConfigRef.current.reversing = next;
     viewerRef.current?.engine?.setSpeed(speed * (next ? -1 : 1));
-  }, [reversing, speed, viewerRef]);
-
-  const [scale, setScaleVal] = useState(1);
+  }, [reversing, speed, viewerRef, playbackConfigRef]);
 
   const handleSpeedChange = useCallback((val: number) => {
     setSpeed(val);
+    if (playbackConfigRef) playbackConfigRef.current.speed = val;
     viewerRef.current?.engine?.setSpeed(val * (reversing ? -1 : 1));
-  }, [viewerRef, reversing]);
+  }, [viewerRef, reversing, playbackConfigRef]);
 
   const handleScaleChange = useCallback((val: number) => {
     setScaleVal(val);
+    if (playbackConfigRef) playbackConfigRef.current.scale = val;
     viewerRef.current?.engine?.setScale(val);
-  }, [viewerRef]);
+  }, [viewerRef, playbackConfigRef]);
 
   const handleReset = useCallback(() => {
     viewerRef.current?.engine?.resetOffset();

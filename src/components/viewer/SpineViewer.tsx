@@ -22,10 +22,11 @@ interface SpineViewerProps {
   initialAnimation?: string;
   bgImage?: HTMLImageElement | null;
   bgConfigRef?: React.MutableRefObject<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>;
+  playbackConfigRef?: React.MutableRefObject<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>;
 }
 
 const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function SpineViewer(
-  { spineFiles, majorVersion, minorVersion, className, onLoaded, onError, initialAnimation, bgImage, bgConfigRef },
+  { spineFiles, majorVersion, minorVersion, className, onLoaded, onError, initialAnimation, bgImage, bgConfigRef, playbackConfigRef },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +70,13 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
           engineRef.current!.setBgState(bgConfigRef.current);
         } else {
           engineRef.current!.setBgImage(bgImage || null);
+        }
+
+        if (playbackConfigRef?.current) {
+          engineRef.current!.setPlaying(playbackConfigRef.current.playing);
+          engineRef.current!.setLoop(playbackConfigRef.current.looping);
+          engineRef.current!.setSpeed(playbackConfigRef.current.speed * (playbackConfigRef.current.reversing ? -1 : 1));
+          engineRef.current!.setScale(playbackConfigRef.current.scale);
         }
         
         const anims = engineRef.current!.getAnimations();

@@ -55,6 +55,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [targetAnimation, setTargetAnimation] = useState<string | null>(null);
   const [globalBgImage, setGlobalBgImage] = useState<HTMLImageElement | null>(null);
   const globalBgConfigRef = useRef<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>({ image: null, offsetX: 0, offsetY: 0, scale: 1 });
+  const globalPlaybackConfigRef = useRef<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>({ speed: 1, scale: 1, playing: true, looping: true, reversing: false });
 
   const handleBgImageChange = useCallback((img: HTMLImageElement | null) => {
     globalBgConfigRef.current.image = img;
@@ -527,6 +528,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 }}
                 bgImage={globalBgImage}
                 bgConfigRef={globalBgConfigRef}
+                playbackConfigRef={globalPlaybackConfigRef}
               />
             ) : (
               <SpineViewer
@@ -539,6 +541,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 initialAnimation={targetAnimation || undefined}
                 bgImage={globalBgImage}
                 bgConfigRef={globalBgConfigRef}
+                playbackConfigRef={globalPlaybackConfigRef}
               />
             )
           )}
@@ -556,7 +559,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         {previewMaximized ? (
           (animations.length > 0 || skins.length > 0) && (
             <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} disableCharacterControls={viewMode === 'grid' || !hasPreview} />
+              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} disableCharacterControls={viewMode === 'grid' || !hasPreview} playbackConfigRef={globalPlaybackConfigRef} />
             </div>
           )
         ) : (
@@ -571,6 +574,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 globalBgImage={globalBgImage} 
                 onBgImageChange={handleBgImageChange} 
                 disableCharacterControls={viewMode === 'grid' || !hasPreview} 
+                playbackConfigRef={globalPlaybackConfigRef}
               />
             </div>
             {/* Right: Properties */}
