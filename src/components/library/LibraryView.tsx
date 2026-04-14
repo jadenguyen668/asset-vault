@@ -556,31 +556,22 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         {previewMaximized ? (
           (animations.length > 0 || skins.length > 0) && (
             <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} />
+              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} disableCharacterControls={viewMode === 'grid' || !hasPreview} />
             </div>
           )
         ) : (
           <div className="flex overflow-hidden border-t border-border" style={{ flex: '1 1 50%', minHeight: 180 }}>
             {/* Left: Controls */}
             <div className="flex flex-col gap-2 overflow-y-auto border-r border-border p-2.5" style={{ flex: 1, background: 'var(--panel)', minWidth: 0 }}>
-              {hasPreview && (animations.length > 0 || skins.length > 0) ? (
-                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} />
-              ) : (
-                <div className="flex flex-1 flex-col gap-3 p-1">
-                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Animation</span>
-                    <select disabled className="mt-1 w-full rounded border border-border bg-panel-secondary px-2 py-1.5 text-xs text-dim opacity-50"><option>No animation</option></select></div>
-                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Playback</span>
-                    <div className="mt-1 flex gap-1 opacity-40">
-                      <span className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim"><Play size={12} /></span>
-                      <span className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim"><Pause size={12} /></span>
-                      <span className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim"><Repeat size={12} /></span>
-                    </div></div>
-                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Speed <span className="text-accent">1.0x</span></span>
-                    <input type="range" disabled className="mt-1 w-full opacity-30" /></div>
-                  <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Scale <span className="text-accent">1.0x</span></span>
-                    <input type="range" disabled className="mt-1 w-full opacity-30" /></div>
-                </div>
-              )}
+              <ViewerControls 
+                viewerRef={viewerRef} 
+                animations={animations} 
+                skins={skins} 
+                initialAnimation={targetAnimation || undefined} 
+                globalBgImage={globalBgImage} 
+                onBgImageChange={handleBgImageChange} 
+                disableCharacterControls={viewMode === 'grid' || !hasPreview} 
+              />
             </div>
             {/* Right: Properties */}
             <div className="flex flex-col overflow-hidden" style={{ flex: 1, background: 'var(--panel-secondary)', minWidth: 0 }}>

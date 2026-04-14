@@ -12,9 +12,10 @@ interface ViewerControlsProps {
   initialAnimation?: string;
   globalBgImage?: HTMLImageElement | null;
   onBgImageChange?: (img: HTMLImageElement | null) => void;
+  disableCharacterControls?: boolean;
 }
 
-export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange }: ViewerControlsProps) {
+export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls }: ViewerControlsProps) {
   const [currentAnim, setCurrentAnim] = useState(initialAnimation || animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
   const [playing, setPlaying] = useState(true);
@@ -129,6 +130,35 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
           Speed {speed.toFixed(1)}x
           <input type="range" min="0.1" max="3" step="0.1" value={speed} onChange={(e) => handleSpeedChange(parseFloat(e.target.value))} className="w-20" style={{ accentColor: 'var(--accent)' }} />
         </label>
+        <div style={{ opacity: disableCharacterControls ? 0.4 : 1, pointerEvents: disableCharacterControls ? 'none' : 'auto', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          {animations.length > 0 && (
+            <select value={currentAnim} onChange={(e) => handleAnimChange(e.target.value)}
+              className="rounded border border-border bg-panel-secondary px-2 py-1 text-xs text-text outline-none" style={{ minWidth: 140, maxWidth: 240 }}>
+              {animations.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          )}
+          <div className="flex gap-1">
+            <button onClick={togglePlay} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white">
+              {playing ? <Pause size={12} /> : <Play size={12} />}
+            </button>
+            <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`}>
+              <Repeat size={12} />
+            </button>
+          </div>
+          <label className="flex items-center gap-1 text-[10px] text-dim font-mono whitespace-nowrap">
+            Speed {speed.toFixed(1)}x
+            <input type="range" min="0.1" max="3" step="0.1" value={speed} onChange={(e) => handleSpeedChange(parseFloat(e.target.value))} className="w-20" style={{ accentColor: 'var(--accent)' }} />
+          </label>
+        </div>
+        {!globalBgImage ? (
+          <button onClick={() => bgInputRef.current?.click()} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white" title="Upload Background (Shift+Drag to move, Shift+Scroll to zoom)">
+            <ImageIcon size={12} />
+          </button>
+        ) : (
+          <button onClick={handleClearBg} className="flex h-7 w-7 items-center justify-center rounded border border-accent bg-accent text-white hover:bg-red-500 hover:border-red-500" title="Clear Background">
+            <ImageOff size={12} />
+          </button>
+        )}
         <input type="file" ref={bgInputRef} accept="image/*" onChange={handleBgUpload} className="hidden" />
       </div>
     );
@@ -136,76 +166,78 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
 
   return (
     <div className="viewer-controls">
-      {/* Animation Select */}
-      {animations.length > 0 && (
+      <div style={{ opacity: disableCharacterControls ? 0.4 : 1, pointerEvents: disableCharacterControls ? 'none' : 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Animation Select */}
+        {animations.length > 0 && (
+          <div className="control-group">
+            <label className="control-label">Animation</label>
+            <select
+              value={currentAnim}
+              onChange={(e) => handleAnimChange(e.target.value)}
+              className="control-select"
+            >
+              {animations.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Skin Select */}
+        {skins.length > 1 && (
+          <div className="control-group">
+            <label className="control-label">Skin</label>
+            <select
+              value={currentSkin}
+              onChange={(e) => handleSkinChange(e.target.value)}
+              className="control-select"
+            >
+              {skins.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Playback Controls */}
         <div className="control-group">
-          <label className="control-label">Animation</label>
-          <select
-            value={currentAnim}
-            onChange={(e) => handleAnimChange(e.target.value)}
-            className="control-select"
-          >
-            {animations.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
+          <label className="control-label">Playback</label>
+          <div className="control-row">
+            <button onClick={togglePlay} className="control-btn" title={playing ? 'Pause' : 'Play'}>
+              {playing ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <button onClick={toggleLoop} className={`control-btn ${looping ? 'active' : ''}`} title="Loop">
+              <Repeat size={14} />
+            </button>
+            <button onClick={handleReset} className="control-btn" title="Reset View">
+              <RotateCcw size={14} />
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* Skin Select */}
-      {skins.length > 1 && (
+        {/* Speed */}
         <div className="control-group">
-          <label className="control-label">Skin</label>
-          <select
-            value={currentSkin}
-            onChange={(e) => handleSkinChange(e.target.value)}
-            className="control-select"
-          >
-            {skins.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <label className="control-label">Speed: {speed.toFixed(1)}x</label>
+          <input
+            type="range" min="0.1" max="3" step="0.1" value={speed}
+            onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+            className="control-slider"
+          />
         </div>
-      )}
 
-      {/* Playback Controls */}
-      <div className="control-group">
-        <label className="control-label">Playback</label>
-        <div className="control-row">
-          <button onClick={togglePlay} className="control-btn" title={playing ? 'Pause' : 'Play'}>
-            {playing ? <Pause size={14} /> : <Play size={14} />}
-          </button>
-          <button onClick={toggleLoop} className={`control-btn ${looping ? 'active' : ''}`} title="Loop">
-            <Repeat size={14} />
-          </button>
-          <button onClick={handleReset} className="control-btn" title="Reset View">
-            <RotateCcw size={14} />
-          </button>
+        {/* Scale */}
+        <div className="control-group">
+          <label className="control-label">Scale: {scale.toFixed(1)}x</label>
+          <input
+            type="range" min="0.1" max="5" step="0.1" value={scale}
+            onChange={(e) => handleScaleChange(parseFloat(e.target.value))}
+            className="control-slider"
+          />
         </div>
-      </div>
 
-      {/* Speed */}
-      <div className="control-group">
-        <label className="control-label">Speed: {speed.toFixed(1)}x</label>
-        <input
-          type="range" min="0.1" max="3" step="0.1" value={speed}
-          onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
-          className="control-slider"
-        />
-      </div>
-
-      {/* Scale */}
-      <div className="control-group">
-        <label className="control-label">Scale: {scale.toFixed(1)}x</label>
-        <input
-          type="range" min="0.1" max="5" step="0.1" value={scale}
-          onChange={(e) => handleScaleChange(parseFloat(e.target.value))}
-          className="control-slider"
-        />
-      </div>
-
-      {/* Zoom */}
-      <div className="control-group">
-        <label className="control-label">Zoom</label>
-        <div className="control-row">
-          <button onClick={handleZoomOut} className="control-btn" title="Zoom Out"><ZoomOut size={14} /></button>
-          <button onClick={handleZoomIn} className="control-btn" title="Zoom In"><ZoomIn size={14} /></button>
+        {/* Zoom */}
+        <div className="control-group">
+          <label className="control-label">Zoom</label>
+          <div className="control-row">
+            <button onClick={handleZoomOut} className="control-btn" title="Zoom Out"><ZoomOut size={14} /></button>
+            <button onClick={handleZoomIn} className="control-btn" title="Zoom In"><ZoomIn size={14} /></button>
+          </div>
         </div>
       </div>
 

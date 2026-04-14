@@ -22,7 +22,7 @@ export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animat
         {animations.map((anim, index) => (
           <div 
             key={`${anim}-${index}`} 
-            onClick={() => onSelectAnimation?.(anim)}
+            onDoubleClick={() => onSelectAnimation?.(anim)}
             className="flex flex-col border border-border bg-panel-secondary rounded shadow-sm overflow-hidden aspect-square hover:border-accent hover:shadow-md transition-all cursor-pointer"
           >
             <div className="bg-panel px-2 py-1 text-[10px] font-mono font-bold text-dim border-b border-border truncate text-center" title={anim}>
