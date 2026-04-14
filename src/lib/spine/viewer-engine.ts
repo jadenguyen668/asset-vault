@@ -224,7 +224,15 @@ export class SpineViewerEngine {
     ctx2d.translate(w / 2 + this.state.offsetX, h * 0.85 + this.state.offsetY);
     ctx2d.scale(this.state.scale, -this.state.scale);
 
-    if (this.state.playing) animState.update(delta * this.state.speed);
+    if (this.state.playing) {
+      animState.update(delta * this.state.speed);
+      if (this.state.speed < 0 && this.state.loop) {
+        const track = animState.getCurrent(0);
+        if (track && track.trackTime < 0 && track.animation.duration > 0) {
+          track.trackTime += track.animation.duration;
+        }
+      }
+    }
     animState.apply(skeleton);
     skeleton.updateWorldTransform();
 
@@ -252,7 +260,15 @@ export class SpineViewerEngine {
     skeleton.scaleX = this.state.scale;
     skeleton.scaleY = this.state.scale;
 
-    if (this.state.playing) animState.update(delta * this.state.speed);
+    if (this.state.playing) {
+      animState.update(delta * this.state.speed);
+      if (this.state.speed < 0 && this.state.loop) {
+        const track = animState.getCurrent(0);
+        if (track && track.trackTime < 0 && track.animation.duration > 0) {
+          track.trackTime += track.animation.duration;
+        }
+      }
+    }
     animState.apply(skeleton);
 
     const spine4 = this._spine4;

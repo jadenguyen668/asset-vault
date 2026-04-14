@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useRef } from 'react';
-import { Play, Pause, RotateCcw, Repeat, ZoomIn, ZoomOut, Image as ImageIcon, ImageOff } from 'lucide-react';
+import { Play, Pause, RotateCcw, Repeat, ZoomIn, ZoomOut, Image as ImageIcon, ImageOff, Rewind } from 'lucide-react';
 import type { SpineViewerHandle } from './SpineViewer';
 
 interface ViewerControlsProps {
@@ -20,6 +20,7 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
   const [playing, setPlaying] = useState(true);
   const [looping, setLooping] = useState(true);
+  const [reversing, setReversing] = useState(false);
   const [speed, setSpeed] = useState(1);
   const bgInputRef = useRef<HTMLInputElement>(null);
 
@@ -57,12 +58,18 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
     viewerRef.current?.engine?.setLoop(next);
   }, [looping, viewerRef]);
 
+  const toggleReverse = useCallback(() => {
+    const next = !reversing;
+    setReversing(next);
+    viewerRef.current?.engine?.setSpeed(speed * (next ? -1 : 1));
+  }, [reversing, speed, viewerRef]);
+
   const [scale, setScaleVal] = useState(1);
 
   const handleSpeedChange = useCallback((val: number) => {
     setSpeed(val);
-    viewerRef.current?.engine?.setSpeed(val);
-  }, [viewerRef]);
+    viewerRef.current?.engine?.setSpeed(val * (reversing ? -1 : 1));
+  }, [viewerRef, reversing]);
 
   const handleScaleChange = useCallback((val: number) => {
     setScaleVal(val);
@@ -137,11 +144,14 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
               {animations.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           )}
-          <div className="flex gap-1">
-            <button onClick={togglePlay} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white">
+          <div className="flex gap-1" style={{ width: 'fit-content' }}>
+            <button onClick={toggleReverse} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${reversing ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title="Reverse Play">
+              <Rewind size={12} />
+            </button>
+            <button onClick={togglePlay} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white" title={playing ? 'Pause' : 'Play'}>
               {playing ? <Pause size={12} /> : <Play size={12} />}
             </button>
-            <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`}>
+            <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title="Loop">
               <Repeat size={12} />
             </button>
           </div>
@@ -199,14 +209,14 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
         <div className="control-group">
           <label className="control-label">Playback</label>
           <div className="control-row">
+            <button onClick={toggleReverse} className={`control-btn ${reversing ? 'active' : ''}`} title="Reverse Play">
+              <Rewind size={14} />
+            </button>
             <button onClick={togglePlay} className="control-btn" title={playing ? 'Pause' : 'Play'}>
               {playing ? <Pause size={14} /> : <Play size={14} />}
             </button>
             <button onClick={toggleLoop} className={`control-btn ${looping ? 'active' : ''}`} title="Loop">
               <Repeat size={14} />
-            </button>
-            <button onClick={handleReset} className="control-btn" title="Reset View">
-              <RotateCcw size={14} />
             </button>
           </div>
         </div>
