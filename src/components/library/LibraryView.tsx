@@ -53,6 +53,16 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [previewMaximized, setPreviewMaximized] = useState(false);
   const [viewMode, setViewMode] = useState<'single' | 'grid'>('single');
   const [targetAnimation, setTargetAnimation] = useState<string | null>(null);
+  const [globalBgImage, setGlobalBgImage] = useState<HTMLImageElement | null>(null);
+  const globalBgConfigRef = useRef<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>({ image: null, offsetX: 0, offsetY: 0, scale: 1 });
+
+  const handleBgImageChange = useCallback((img: HTMLImageElement | null) => {
+    globalBgConfigRef.current.image = img;
+    globalBgConfigRef.current.offsetX = 0;
+    globalBgConfigRef.current.offsetY = 0;
+    globalBgConfigRef.current.scale = 1;
+    setGlobalBgImage(img);
+  }, []);
 
   // Handle card click -> load character in preview (fetch PNGs from R2)
   const handleCardClick = useCallback(async (char: Character) => {
@@ -515,6 +525,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                   setTargetAnimation(anim); 
                   setViewMode('single'); 
                 }}
+                bgImage={globalBgImage}
+                bgConfigRef={globalBgConfigRef}
               />
             ) : (
               <SpineViewer
@@ -525,6 +537,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 onLoaded={handleViewerLoaded}
                 onError={handleViewerError}
                 initialAnimation={targetAnimation || undefined}
+                bgImage={globalBgImage}
+                bgConfigRef={globalBgConfigRef}
               />
             )
           )}
@@ -542,7 +556,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         {previewMaximized ? (
           (animations.length > 0 || skins.length > 0) && (
             <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} />
+              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} />
             </div>
           )
         ) : (
@@ -550,7 +564,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
             {/* Left: Controls */}
             <div className="flex flex-col gap-2 overflow-y-auto border-r border-border p-2.5" style={{ flex: 1, background: 'var(--panel)', minWidth: 0 }}>
               {hasPreview && (animations.length > 0 || skins.length > 0) ? (
-                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} initialAnimation={targetAnimation || undefined} />
+                <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} />
               ) : (
                 <div className="flex flex-1 flex-col gap-3 p-1">
                   <div><span className="text-[10px] uppercase tracking-widest text-dim font-mono">Animation</span>

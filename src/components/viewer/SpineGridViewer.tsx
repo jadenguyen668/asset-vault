@@ -8,9 +8,11 @@ interface SpineGridViewerProps {
   minorVersion: number;
   animations: string[];
   onSelectAnimation?: (animName: string) => void;
+  bgImage?: HTMLImageElement | null;
+  bgConfigRef?: React.MutableRefObject<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>;
 }
 
-export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animations, onSelectAnimation }: SpineGridViewerProps) {
+export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animations, onSelectAnimation, bgImage, bgConfigRef }: SpineGridViewerProps) {
   return (
     <div className="flex-1 w-full h-full overflow-y-auto bg-bg p-4">
       <div 
@@ -32,6 +34,8 @@ export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animat
                 majorVersion={majorVersion}
                 minorVersion={minorVersion}
                 initialAnimation={anim}
+                bgImage={bgImage}
+                bgConfigRef={bgConfigRef}
               />
             </div>
           </div>

@@ -20,10 +20,12 @@ interface SpineViewerProps {
   onLoaded?: (info: { animations: string[]; skins: string[] }) => void;
   onError?: (error: string) => void;
   initialAnimation?: string;
+  bgImage?: HTMLImageElement | null;
+  bgConfigRef?: React.MutableRefObject<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>;
 }
 
 const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function SpineViewer(
-  { spineFiles, majorVersion, minorVersion, className, onLoaded, onError, initialAnimation },
+  { spineFiles, majorVersion, minorVersion, className, onLoaded, onError, initialAnimation, bgImage, bgConfigRef },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,6 +64,13 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
       try {
         await engineRef.current!.loadSpine(spineFiles, majorVersion, minorVersion, initialAnimation);
         if (cancelled) return;
+        
+        if (bgConfigRef) {
+          engineRef.current!.setBgState(bgConfigRef.current);
+        } else {
+          engineRef.current!.setBgImage(bgImage || null);
+        }
+        
         const anims = engineRef.current!.getAnimations();
         const skins = engineRef.current!.getSkins();
         onLoaded?.({ animations: anims, skins });
@@ -79,6 +88,17 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
     return () => { cancelled = true; };
   }, [spineFiles, majorVersion, minorVersion, onLoaded, onError, initialAnimation]);
 
+  // Sync background changes without full reload when prop changes
+  useEffect(() => {
+    if (engineRef.current) {
+      if (bgConfigRef) {
+        engineRef.current.setBgState(bgConfigRef.current);
+      } else {
+        engineRef.current.setBgImage(bgImage || null);
+      }
+    }
+  }, [bgImage, bgConfigRef]);
+
   // Mouse interaction: pan (drag) + zoom (wheel)
   const isDragging = useRef(false);
   const lastMouse = useRef({ x: 0, y: 0 });
@@ -94,8 +114,21 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
     const dy = e.clientY - lastMouse.current.y;
     lastMouse.current = { x: e.clientX, y: e.clientY };
     const dpr = window.devicePixelRatio || 1;
-    engineRef.current.setOffset(dx * dpr, dy * dpr);
-  }, []);
+    
+    if (e.shiftKey) {
+      const scale = engineRef.current.getScale();
+      const vz = engineRef.current.getViewZoom();
+      const normDx = dx * dpr / (scale * vz);
+      const normDy = dy * dpr / (scale * vz);
+      engineRef.current.setBgOffset(normDx, normDy);
+      if (bgConfigRef?.current) {
+        bgConfigRef.current.offsetX += normDx;
+        bgConfigRef.current.offsetY += normDy;
+      }
+    } else {
+      engineRef.current.setOffset(dx * dpr, dy * dpr);
+    }
+  }, [bgConfigRef]);
 
   const handleMouseUp = useCallback(() => { isDragging.current = false; }, []);
 

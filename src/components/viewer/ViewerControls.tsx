@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Play, Pause, RotateCcw, Repeat, ZoomIn, ZoomOut } from 'lucide-react';
+import { useRef } from 'react';
+import { Play, Pause, RotateCcw, Repeat, ZoomIn, ZoomOut, Image as ImageIcon, ImageOff } from 'lucide-react';
 import type { SpineViewerHandle } from './SpineViewer';
 
 interface ViewerControlsProps {
@@ -9,14 +10,17 @@ interface ViewerControlsProps {
   skins: string[];
   compact?: boolean;
   initialAnimation?: string;
+  globalBgImage?: HTMLImageElement | null;
+  onBgImageChange?: (img: HTMLImageElement | null) => void;
 }
 
-export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation }: ViewerControlsProps) {
+export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange }: ViewerControlsProps) {
   const [currentAnim, setCurrentAnim] = useState(initialAnimation || animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
   const [playing, setPlaying] = useState(true);
   const [looping, setLooping] = useState(true);
   const [speed, setSpeed] = useState(1);
+  const bgInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (initialAnimation && animations.includes(initialAnimation)) {
@@ -79,6 +83,22 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
     viewerRef.current?.engine?.setViewZoom(z / 1.2);
   }, [viewerRef]);
 
+  const handleBgUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const img = new Image();
+      img.onload = () => {
+        onBgImageChange?.(img);
+      };
+      img.src = URL.createObjectURL(file);
+    }
+  }, [onBgImageChange]);
+
+  const handleClearBg = useCallback(() => {
+    onBgImageChange?.(null);
+    if (bgInputRef.current) bgInputRef.current.value = '';
+  }, [onBgImageChange]);
+
   if (compact) {
     return (
       <div className="flex items-center gap-3 flex-wrap">
@@ -95,11 +115,21 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
           <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`}>
             <Repeat size={12} />
           </button>
+          {!globalBgImage ? (
+            <button onClick={() => bgInputRef.current?.click()} className="flex h-7 w-7 items-center justify-center rounded border border-border bg-panel-secondary text-dim hover:bg-accent hover:text-white" title="Upload Background (Shift+Drag to move)">
+              <ImageIcon size={12} />
+            </button>
+          ) : (
+            <button onClick={handleClearBg} className="flex h-7 w-7 items-center justify-center rounded border border-accent bg-accent text-white hover:bg-red-500 hover:border-red-500" title="Clear Background">
+              <ImageOff size={12} />
+            </button>
+          )}
         </div>
         <label className="flex items-center gap-1 text-[10px] text-dim font-mono whitespace-nowrap">
           Speed {speed.toFixed(1)}x
           <input type="range" min="0.1" max="3" step="0.1" value={speed} onChange={(e) => handleSpeedChange(parseFloat(e.target.value))} className="w-20" style={{ accentColor: 'var(--accent)' }} />
         </label>
+        <input type="file" ref={bgInputRef} accept="image/*" onChange={handleBgUpload} className="hidden" />
       </div>
     );
   }
@@ -177,6 +207,22 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
           <button onClick={handleZoomOut} className="control-btn" title="Zoom Out"><ZoomOut size={14} /></button>
           <button onClick={handleZoomIn} className="control-btn" title="Zoom In"><ZoomIn size={14} /></button>
         </div>
+      </div>
+
+      {/* Background */}
+      <div className="control-group">
+        <label className="control-label">Background</label>
+        <div className="control-row">
+          <button onClick={() => bgInputRef.current?.click()} className="control-btn" title="Upload Background (Hold Shift + Drag to move it)" style={{ flex: 1, gap: '4px', width: 'auto' }}>
+            <ImageIcon size={14} /> <span style={{ fontSize: 11 }}>Load BG</span>
+          </button>
+          {globalBgImage && (
+            <button onClick={handleClearBg} className="control-btn active" title="Clear Background" style={{ background: '#ef4444', borderColor: '#ef4444' }}>
+              <ImageOff size={14} />
+            </button>
+          )}
+        </div>
+        <input type="file" ref={bgInputRef} accept="image/*" onChange={handleBgUpload} className="hidden" style={{ display: 'none' }} />
       </div>
 
       <style jsx>{`

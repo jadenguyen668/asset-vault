@@ -204,8 +204,8 @@ export class SpineViewerEngine {
       const bgDisplayScale = this.state.scale * this.state.bgScale;
       const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
       const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
-      const bx = w / 2 - imgW / 2 + this.state.bgOffsetX;
-      const by = h * 0.85 - imgH / 2 + this.state.bgOffsetY;
+      const bx = w / 2 - imgW / 2 + this.state.bgOffsetX * this.state.scale;
+      const by = h * 0.85 - imgH / 2 + this.state.bgOffsetY * this.state.scale;
       ctx2d.drawImage(this.state.bgImage, bx, by, imgW, imgH);
     }
 
@@ -317,8 +317,8 @@ export class SpineViewerEngine {
         const bgDisplayScale = this.state.scale * this.state.bgScale;
         const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
         const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
-        const bx = w / 2 - imgW / 2 + this.state.bgOffsetX;
-        const by = h * 0.2 - imgH / 2 - this.state.bgOffsetY;
+        const bx = w / 2 - imgW / 2 + this.state.bgOffsetX * this.state.scale;
+        const by = h * 0.2 - imgH / 2 - this.state.bgOffsetY * this.state.scale;
         this.state.renderer.drawTexture(this.bgGlTexture, bx, by, imgW, imgH);
       }
     }
@@ -721,10 +721,27 @@ export class SpineViewerEngine {
     }
   }
   setOffset(dx: number, dy: number) { if (this.state) { this.state.offsetX += dx; this.state.offsetY += dy; } }
+  setBgOffset(dx: number, dy: number) { if (this.state) { this.state.bgOffsetX += dx; this.state.bgOffsetY += dy; } }
   resetOffset() { if (this.state) { this.state.offsetX = 0; this.state.offsetY = 0; } }
   setBgImage(img: HTMLImageElement | null) {
     if (!this.state) return;
-    this.state.bgImage = img; this.state.bgOffsetX = 0; this.state.bgOffsetY = 0; this.state.bgScale = 1;
+    this.state.bgImage = img;
+  }
+  getBgState() {
+    if (!this.state) return null;
+    return {
+      image: this.state.bgImage,
+      offsetX: this.state.bgOffsetX,
+      offsetY: this.state.bgOffsetY,
+      scale: this.state.bgScale
+    };
+  }
+  setBgState(config: { image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }) {
+    if (!this.state) return;
+    this.state.bgImage = config.image;
+    this.state.bgOffsetX = config.offsetX;
+    this.state.bgOffsetY = config.offsetY;
+    this.state.bgScale = config.scale;
   }
   getScale(): number { return this.state?.scale ?? 1; }
   isPlaying(): boolean { return this.state?.playing ?? false; }
