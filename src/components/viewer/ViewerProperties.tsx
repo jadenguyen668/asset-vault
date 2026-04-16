@@ -24,6 +24,7 @@ export function ViewerProperties({ character, projects = [], collections = [], o
   const [editNotes, setEditNotes] = useState('');
   const [editProject, setEditProject] = useState<string>('');
   const [editCollectionIds, setEditCollectionIds] = useState<number[]>([]);
+  const [editAllowDownload, setEditAllowDownload] = useState(true);
 
   // New Project State
   const [newProjectCode, setNewProjectCode] = useState('');
@@ -44,6 +45,7 @@ export function ViewerProperties({ character, projects = [], collections = [], o
       setEditNotes(character.notes || '');
       setEditProject(character.project_id ? String(character.project_id) : '');
       setEditCollectionIds(character.collection_ids || []);
+      setEditAllowDownload(character.allow_download ?? true);
       
       // Auto-parse values from existing name if possible
       const parts = (character.name || '').split('_');
@@ -86,6 +88,7 @@ export function ViewerProperties({ character, projects = [], collections = [], o
       notes: editNotes,
       project_id: editProject && editProject !== '__new__' ? parseInt(editProject) : null,
       collection_ids: editCollectionIds,
+      allow_download: editAllowDownload,
     };
     
     let newProj;
@@ -270,6 +273,27 @@ export function ViewerProperties({ character, projects = [], collections = [], o
                </div>
              </div>
           )}
+        </div>
+
+        <hr className="border-border my-1" />
+
+        {/* Download Permission */}
+        <div className="flex flex-col gap-1 mt-1">
+          <div className="flex items-center justify-between border-b border-white/5 py-1 text-xs">
+            <span className="flex items-center gap-1.5 text-dim"><HardDrive size={12} /> Tải Bundle</span>
+            {isEditing ? (
+              <label className="flex items-center cursor-pointer">
+                <input type="checkbox" className="hidden" checked={editAllowDownload} onChange={e => setEditAllowDownload(e.target.checked)} />
+                <div className={`w-8 h-4 rounded-full transition-colors flex items-center px-0.5 ${editAllowDownload ? 'bg-accent' : 'bg-white/10'}`}>
+                   <div className={`w-3 h-3 rounded-full bg-white transition-transform ${editAllowDownload ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+              </label>
+            ) : (
+              <span className={`font-mono text-[11px] font-bold ${character.allow_download ? 'text-accent' : 'text-red-400'}`}>
+                {character.allow_download ? 'Cho Phép' : 'Bị Khóa'}
+              </span>
+            )}
+          </div>
         </div>
 
         <hr className="border-border my-1" />

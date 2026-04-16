@@ -40,6 +40,8 @@ export interface Character {
   status: AssetStatus;
   project_id: number | null;
   collection_ids: number[];
+  allow_download: boolean;
+  preview_config?: Record<string, any> | null;
   json_path: string | null;
   atlas_path: string | null;
   png_paths: string[];

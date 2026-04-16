@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS characters (
     tags TEXT[] NOT NULL DEFAULT '{}',
     notes TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'draft',
+    preview_config JSONB DEFAULT '{}'::jsonb,
+    allow_download BOOLEAN NOT NULL DEFAULT true,
 
     -- Relations
     project_id BIGINT REFERENCES projects(id) ON DELETE SET NULL,

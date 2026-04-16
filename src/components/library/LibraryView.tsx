@@ -16,8 +16,9 @@ import { ViewerProperties } from '@/components/viewer/ViewerProperties';
 import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save, LayoutGrid, LayoutPanelLeft } from 'lucide-react';
 import { ImportDialog, type ImportResult } from './ImportDialog';
 import { uploadSpineFiles } from '@/lib/storage/r2';
-import { saveCharacter, deleteCharacter } from '@/lib/db/characters';
 import { createClient } from '@/lib/supabase/client';
+import { saveCharacter, deleteCharacter, updatePreviewConfig } from '@/lib/db/characters';
+import { downloadAsZip, type RuntimeMetaConfig } from '@/lib/export/meta-config';
 import { useRouter } from 'next/navigation';
 
 interface Props {
@@ -64,6 +65,66 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     globalBgConfigRef.current.scale = 1;
     setGlobalBgImage(img);
   }, []);
+
+  const saveConfigTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleConfigChange = useCallback((config: { speed: number; scale: number }) => {
+    if (!selectedChar) return;
+    if (saveConfigTimeoutRef.current) clearTimeout(saveConfigTimeoutRef.current);
+    saveConfigTimeoutRef.current = setTimeout(() => {
+      let previewConfig = typeof selectedChar.preview_config === 'object' && selectedChar.preview_config ? { ...selectedChar.preview_config } : {};
+      previewConfig = { ...previewConfig, speed: config.speed, scale: config.scale };
+      updatePreviewConfig(selectedChar.id, previewConfig).catch(e => console.error('Failed to auto-save config:', e));
+    }, 1000);
+  }, [selectedChar]);
+
+  const handleExportBundle = useCallback(async () => {
+    if (!previewFiles || !selectedChar) return;
+
+    let currentConfig = typeof selectedChar.preview_config === 'object' && selectedChar.preview_config ? { ...selectedChar.preview_config } : {};
+    currentConfig.speed = globalPlaybackConfigRef.current.speed;
+    currentConfig.scale = globalPlaybackConfigRef.current.scale;
+
+    const metaConfig: RuntimeMetaConfig = {
+      _format: 'spine-runtime-config',
+      _version: '1.0',
+      _generatedAt: new Date().toISOString(),
+      _generatedBy: 'Spine Asset Hub',
+      character: {
+        name: selectedChar.name,
+        spineVersion: selectedChar.spine_version,
+        jsonFile: selectedChar.json_name,
+        defaultSkin: skins[0] || 'default',
+        defaultAnimation: animations[0] || '',
+        baseScale: currentConfig.scale || 1.0,
+      },
+      animations: animations.map(a => ({
+        name: a,
+        timeScale: currentConfig.speed || 1.0,
+        mixDuration: 0.2,
+        loop: true,
+        fxIntensity: 1.0,
+        colorTint: null
+      })),
+      skins: skins.map(s => ({
+        name: s,
+        isDefault: s === skins[0],
+      })),
+      global: {
+        premultipliedAlpha: false,
+        physicsEnabled: true,
+        defaultMix: 0.2,
+      }
+    };
+
+    await downloadAsZip({
+      jsonText: previewFiles.jsonText,
+      atlasText: previewFiles.atlasText,
+      pngBlobs: Array.from(previewFiles.pngBlobs.entries()).map(([k, v]) => ({ name: k, blob: v })),
+      jsonName: previewFiles.jsonName,
+      metaConfig
+    });
+  }, [previewFiles, selectedChar, animations, skins]);
 
   // Handle card click -> load character in preview (fetch PNGs from R2)
   const handleCardClick = useCallback(async (char: Character) => {
@@ -126,6 +187,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         pngBlobs,
         jsonName: char.json_name,
       });
+
+      // Apply saved preview_config
+      const parsedConfig = typeof char.preview_config === 'object' && char.preview_config ? (char.preview_config as any) : {};
+      globalPlaybackConfigRef.current.speed = parsedConfig.speed ?? 1;
+      globalPlaybackConfigRef.current.scale = parsedConfig.scale ?? 1;
+
       setPreviewMajor(char.major_version);
       setPreviewMinor(char.minor_version);
       setPreviewName(char.name);
@@ -260,6 +327,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           status: 'draft',
           project_id: result.projectId,
           collection_ids: [],
+          allow_download: true,
           json_path: null,
           atlas_path: null,
           png_paths: [],
@@ -575,6 +643,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 onBgImageChange={handleBgImageChange} 
                 disableCharacterControls={viewMode === 'grid' || !hasPreview} 
                 playbackConfigRef={globalPlaybackConfigRef}
+                onConfigChange={handleConfigChange}
+                onExportBundle={selectedChar && selectedChar.allow_download ? handleExportBundle : undefined}
               />
             </div>
             {/* Right: Properties */}

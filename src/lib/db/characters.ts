@@ -55,6 +55,11 @@ export async function updateLastViewed(id: number): Promise<void> {
   await supabase.from('characters').update({ last_viewed_at: new Date().toISOString() }).eq('id', id);
 }
 
+export async function updatePreviewConfig(id: number, preview_config: Record<string, any>): Promise<void> {
+  const supabase = createClient();
+  await supabase.from('characters').update({ preview_config }).eq('id', id);
+}
+
 export async function updateThumbnail(id: number, thumbnail: string): Promise<void> {
   const supabase = createClient();
   await supabase.from('characters').update({ thumbnail }).eq('id', id);

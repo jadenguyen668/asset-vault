@@ -87,24 +87,29 @@ export function ImportDialog({ sets, projects, onConfirm, onCancel }: Props) {
 
   useEffect(() => {
     async function load() {
-      const names = sets.map(s => s.spineFiles.jsonName);
-      const dupes = await findDuplicates(names);
-      const newItems: ImportDialogItem[] = sets.map(set => {
-        const isDup = dupes.has(set.spineFiles.jsonName);
-        let fileSize = new Blob([set.spineFiles.jsonText]).size + new Blob([set.spineFiles.atlasText]).size;
-        for (const [, blob] of set.spineFiles.pngBlobs) fileSize += blob.size;
-        return {
-          spineSet: set,
-          name: set.name,
-          originalName: set.name,
-          isDuplicate: isDup,
-          existingChar: dupes.get(set.spineFiles.jsonName),
-          selected: !isDup,
-          fileSize,
-        };
-      });
-      setItems(newItems);
-      setLoading(false);
+      try {
+        const names = sets.map(s => s.spineFiles.jsonName);
+        const dupes = await findDuplicates(names);
+        const newItems: ImportDialogItem[] = sets.map(set => {
+          const isDup = dupes.has(set.spineFiles.jsonName);
+          let fileSize = new Blob([set.spineFiles.jsonText]).size + new Blob([set.spineFiles.atlasText]).size;
+          for (const [, blob] of set.spineFiles.pngBlobs) fileSize += blob.size;
+          return {
+            spineSet: set,
+            name: set.name,
+            originalName: set.name,
+            isDuplicate: isDup,
+            existingChar: dupes.get(set.spineFiles.jsonName),
+            selected: !isDup,
+            fileSize,
+          };
+        });
+        setItems(newItems);
+      } catch (err) {
+        console.error("Failed to load dialog:", err);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, [sets]);

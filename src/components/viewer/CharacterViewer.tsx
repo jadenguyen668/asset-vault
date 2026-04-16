@@ -7,6 +7,8 @@ import type { Character } from '@/types/database';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 import { Loader2, ArrowLeft, Bone, Film, Layers } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { updatePreviewConfig } from '@/lib/db/characters';
+import { downloadAsZip, type RuntimeMetaConfig } from '@/lib/export/meta-config';
 
 interface Props {
   character: Character;
@@ -20,6 +22,17 @@ export function CharacterViewer({ character }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [animations, setAnimations] = useState<string[]>([]);
   const [skins, setSkins] = useState<string[]>([]);
+
+  // Parse initial config from DB
+  const initialConfig = typeof character.preview_config === 'object' && character.preview_config ? character.preview_config as Record<string, any> : {};
+  const playbackConfigRef = useRef({
+    speed: initialConfig.speed ?? 1,
+    scale: initialConfig.scale ?? 1,
+    playing: true,
+    looping: true,
+    reversing: false
+  });
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load assets on mount
   useEffect(() => {
@@ -70,6 +83,63 @@ export function CharacterViewer({ character }: Props) {
     setAnimations(info.animations);
     setSkins(info.skins);
   }, []);
+
+  const handleConfigChange = useCallback((config: { speed: number; scale: number }) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      let previewConfig = typeof character.preview_config === 'object' && character.preview_config ? { ...character.preview_config } : {};
+      previewConfig = { ...previewConfig, speed: config.speed, scale: config.scale };
+      updatePreviewConfig(character.id, previewConfig).catch(e => console.error('Failed to auto-save config:', e));
+    }, 1000);
+  }, [character.id, character.preview_config]);
+
+  const handleExportBundle = useCallback(async () => {
+    if (!spineFiles) return;
+
+    let currentConfig = typeof character.preview_config === 'object' && character.preview_config ? { ...character.preview_config } : {};
+    currentConfig.speed = playbackConfigRef.current.speed;
+    currentConfig.scale = playbackConfigRef.current.scale;
+
+    const metaConfig: RuntimeMetaConfig = {
+      _format: 'spine-runtime-config',
+      _version: '1.0',
+      _generatedAt: new Date().toISOString(),
+      _generatedBy: 'Spine Asset Hub',
+      character: {
+        name: character.name,
+        spineVersion: character.spine_version,
+        jsonFile: character.json_name,
+        defaultSkin: skins[0] || 'default',
+        defaultAnimation: animations[0] || '',
+        baseScale: currentConfig.scale || 1.0,
+      },
+      animations: animations.map(a => ({
+        name: a,
+        timeScale: currentConfig.speed || 1.0,
+        mixDuration: 0.2,
+        loop: true,
+        fxIntensity: 1.0,
+        colorTint: null
+      })),
+      skins: skins.map(s => ({
+        name: s,
+        isDefault: s === skins[0],
+      })),
+      global: {
+        premultipliedAlpha: false,
+        physicsEnabled: true,
+        defaultMix: 0.2,
+      }
+    };
+
+    await downloadAsZip({
+      jsonText: spineFiles.jsonText,
+      atlasText: spineFiles.atlasText,
+      pngBlobs: Array.from(spineFiles.pngBlobs.entries()).map(([k, v]) => ({ name: k, blob: v })),
+      jsonName: spineFiles.jsonName,
+      metaConfig
+    });
+  }, [spineFiles, character, animations, skins]);
 
   if (loading) {
     return (
@@ -127,7 +197,14 @@ export function CharacterViewer({ character }: Props) {
           />
         </div>
         {(animations.length > 0 || skins.length > 0) && (
-          <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} />
+          <ViewerControls 
+            viewerRef={viewerRef} 
+            animations={animations} 
+            skins={skins} 
+            playbackConfigRef={playbackConfigRef}
+            onConfigChange={handleConfigChange}
+            onExportBundle={character.allow_download !== false ? handleExportBundle : undefined}
+          />
         )}
       </div>
     </div>

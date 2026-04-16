@@ -14,9 +14,11 @@ interface ViewerControlsProps {
   onBgImageChange?: (img: HTMLImageElement | null) => void;
   disableCharacterControls?: boolean;
   playbackConfigRef?: React.MutableRefObject<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>;
+  onConfigChange?: (config: { speed: number; scale: number }) => void;
+  onExportBundle?: () => void;
 }
 
-export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef }: ViewerControlsProps) {
+export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef, onConfigChange, onExportBundle }: ViewerControlsProps) {
   const [currentAnim, setCurrentAnim] = useState(initialAnimation || animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
   const [playing, setPlaying] = useState(playbackConfigRef?.current?.playing ?? true);
@@ -93,13 +95,15 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
     setSpeed(val);
     if (playbackConfigRef) playbackConfigRef.current.speed = val;
     viewerRef.current?.engine?.setSpeed(val * (reversing ? -1 : 1));
-  }, [viewerRef, reversing, playbackConfigRef]);
+    onConfigChange?.({ speed: val, scale });
+  }, [viewerRef, reversing, playbackConfigRef, onConfigChange, scale]);
 
   const handleScaleChange = useCallback((val: number) => {
     setScaleVal(val);
     if (playbackConfigRef) playbackConfigRef.current.scale = val;
     viewerRef.current?.engine?.setScale(val);
-  }, [viewerRef, playbackConfigRef]);
+    onConfigChange?.({ speed, scale: val });
+  }, [viewerRef, playbackConfigRef, onConfigChange, speed]);
 
   const handleReset = useCallback(() => {
     viewerRef.current?.engine?.resetOffset();
@@ -277,6 +281,14 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
             <button onClick={handleZoomIn} className="control-btn" title="Zoom In"><ZoomIn size={14} /></button>
           </div>
         </div>
+        {/* Export */}
+        {onExportBundle && (
+          <div className="control-group mt-2">
+            <button onClick={onExportBundle} className="control-btn" title="Download release bundle" style={{ width: '100%', gap: '6px', background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' }}>
+              <span className="text-xs font-bold uppercase tracking-wider">📦 Tải Tích Hợp</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Background */}
