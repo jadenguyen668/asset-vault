@@ -40,6 +40,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [previewMinor, setPreviewMinor] = useState(8);
   const [animations, setAnimations] = useState<string[]>([]);
   const [skins, setSkins] = useState<string[]>([]);
+  const [bones, setBones] = useState<string[]>([]);
   const [previewName, setPreviewName] = useState('');
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [loadingChar, setLoadingChar] = useState(false);
@@ -217,9 +218,10 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
   const [skelInfo, setSkelInfo] = useState<{ bones: number; slots: number; anims: number; skins: number } | null>(null);
 
-  const handleViewerLoaded = useCallback((info: { animations: string[]; skins: string[] }) => {
+  const handleViewerLoaded = useCallback((info: { animations: string[]; skins: string[]; bones: string[] }) => {
     setAnimations(info.animations);
     setSkins(info.skins);
+    setBones(info.bones);
     // Get skeleton info after a tick (engine needs to finish setup)
     setTimeout(() => {
       const si = viewerRef.current?.getSkeletonInfo();
@@ -627,7 +629,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         {previewMaximized ? (
           (animations.length > 0 || skins.length > 0) && (
             <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} disableCharacterControls={viewMode === 'grid' || !hasPreview} playbackConfigRef={globalPlaybackConfigRef} />
+              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} bones={bones} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} disableCharacterControls={viewMode === 'grid' || !hasPreview} playbackConfigRef={globalPlaybackConfigRef} />
             </div>
           )
         ) : (
@@ -638,6 +640,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 viewerRef={viewerRef} 
                 animations={animations} 
                 skins={skins} 
+                bones={bones}
                 initialAnimation={targetAnimation || undefined} 
                 globalBgImage={globalBgImage} 
                 onBgImageChange={handleBgImageChange} 

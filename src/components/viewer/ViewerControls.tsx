@@ -8,6 +8,7 @@ interface ViewerControlsProps {
   viewerRef: React.RefObject<SpineViewerHandle | null>;
   animations: string[];
   skins: string[];
+  bones?: string[];
   compact?: boolean;
   initialAnimation?: string;
   globalBgImage?: HTMLImageElement | null;
@@ -18,9 +19,11 @@ interface ViewerControlsProps {
   onExportBundle?: () => void;
 }
 
-export function ViewerControls({ viewerRef, animations, skins, compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef, onConfigChange, onExportBundle }: ViewerControlsProps) {
+export function ViewerControls({ viewerRef, animations, skins, bones = [], compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef, onConfigChange, onExportBundle }: ViewerControlsProps) {
   const [currentAnim, setCurrentAnim] = useState(initialAnimation || animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
+  const [ghosting, setGhosting] = useState<boolean>(false);
+  const [trackedBone, setTrackedBone] = useState<string>('');
   const [playing, setPlaying] = useState(playbackConfigRef?.current?.playing ?? true);
   const [looping, setLooping] = useState(playbackConfigRef?.current?.looping ?? true);
   const [reversing, setReversing] = useState(playbackConfigRef?.current?.reversing ?? false);
@@ -48,6 +51,17 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
   const handleSkinChange = useCallback((name: string) => {
     setCurrentSkin(name);
     viewerRef.current?.setSkin(name);
+  }, [viewerRef]);
+
+  const handleGhostingToggle = useCallback(() => {
+    const newVal = !ghosting;
+    setGhosting(newVal);
+    viewerRef.current?.engine?.setGhostingEnabled(newVal);
+  }, [ghosting, viewerRef]);
+
+  const handleTrackedBoneChange = useCallback((name: string) => {
+    setTrackedBone(name);
+    viewerRef.current?.engine?.setTrackedBone(name === '' ? null : name);
   }, [viewerRef]);
 
   const handlePlayForward = useCallback(() => {
@@ -236,6 +250,39 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
             </select>
           </div>
         )}
+
+        {/* Track Bone */}
+        {bones.length > 0 && (
+          <div className="control-group">
+            <div className="flex justify-between items-center mb-1">
+              <label className="control-label mb-0">Track Bone (Trail)</label>
+              {trackedBone && (
+                <button onClick={() => handleTrackedBoneChange('')} className="text-[9px] text-accent hover:text-white">Clear</button>
+              )}
+            </div>
+            <select
+              value={trackedBone}
+              onChange={(e) => handleTrackedBoneChange(e.target.value)}
+              className="control-select"
+            >
+              <option value="">— None (No Trail) —</option>
+              {bones.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Ghosting Toggle */}
+        <div className="control-group">
+          <label className="control-label flex items-center justify-between mb-0 cursor-pointer">
+            <span className="flex items-center gap-1">Onion Skin (Ghost)</span>
+            <div 
+              onClick={handleGhostingToggle}
+              className={`w-8 h-4 rounded-full p-0.5 transition-colors ${ghosting ? 'bg-accent' : 'bg-panel-secondary border border-border'}`}
+            >
+              <div className={`w-3 h-3 rounded-full bg-white transition-transform ${ghosting ? 'translate-x-4' : 'translate-x-0'}`} />
+            </div>
+          </label>
+        </div>
 
         {/* Playback Controls */}
         <div className="control-group">

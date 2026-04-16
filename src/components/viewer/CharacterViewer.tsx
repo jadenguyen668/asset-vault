@@ -22,6 +22,7 @@ export function CharacterViewer({ character }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [animations, setAnimations] = useState<string[]>([]);
   const [skins, setSkins] = useState<string[]>([]);
+  const [bones, setBones] = useState<string[]>([]);
 
   // Parse initial config from DB
   const initialConfig = typeof character.preview_config === 'object' && character.preview_config ? character.preview_config as Record<string, any> : {};
@@ -79,9 +80,10 @@ export function CharacterViewer({ character }: Props) {
     load();
   }, [character]);
 
-  const handleLoaded = useCallback((info: { animations: string[]; skins: string[] }) => {
+  const handleLoaded = useCallback((info: { animations: string[]; skins: string[]; bones: string[] }) => {
     setAnimations(info.animations);
     setSkins(info.skins);
+    setBones(info.bones);
   }, []);
 
   const handleConfigChange = useCallback((config: { speed: number; scale: number }) => {
@@ -201,6 +203,7 @@ export function CharacterViewer({ character }: Props) {
             viewerRef={viewerRef} 
             animations={animations} 
             skins={skins} 
+            bones={bones}
             playbackConfigRef={playbackConfigRef}
             onConfigChange={handleConfigChange}
             onExportBundle={character.allow_download !== false ? handleExportBundle : undefined}

@@ -6,6 +6,7 @@ export interface SpineViewerHandle {
   engine: SpineViewerEngine | null;
   getAnimations: () => string[];
   getSkins: () => string[];
+  getBones: () => string[];
   getSkeletonInfo: () => { bones: number; slots: number; anims: number; skins: number };
   playAnimation: (name: string) => void;
   setSkin: (name: string) => void;
@@ -17,7 +18,7 @@ interface SpineViewerProps {
   majorVersion: number;
   minorVersion: number;
   className?: string;
-  onLoaded?: (info: { animations: string[]; skins: string[] }) => void;
+  onLoaded?: (info: { animations: string[]; skins: string[]; bones: string[] }) => void;
   onError?: (error: string) => void;
   initialAnimation?: string;
   bgImage?: HTMLImageElement | null;
@@ -39,6 +40,7 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
     engine: engineRef.current,
     getAnimations: () => engineRef.current?.getAnimations() ?? [],
     getSkins: () => engineRef.current?.getSkins() ?? [],
+    getBones: () => engineRef.current?.getBones() ?? [],
     getSkeletonInfo: () => engineRef.current?.getSkeletonInfo() ?? { bones: 0, slots: 0, anims: 0, skins: 0 },
     playAnimation: (name: string) => engineRef.current?.playAnimation(name),
     setSkin: (name: string) => engineRef.current?.setSkin(name),
@@ -81,7 +83,8 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
         
         const anims = engineRef.current!.getAnimations();
         const skins = engineRef.current!.getSkins();
-        onLoaded?.({ animations: anims, skins });
+        const bones = engineRef.current!.getBones();
+        onLoaded?.({ animations: anims, skins, bones });
       } catch (e: any) {
         if (cancelled) return;
         const msg = e?.message || 'Failed to load Spine data';

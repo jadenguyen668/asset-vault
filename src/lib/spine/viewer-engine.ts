@@ -73,6 +73,10 @@ export class SpineViewerEngine {
   private blendDebugDone = false;
   private _spine4: any = null;
   private resizeObserver: ResizeObserver | null = null;
+  private shapeRenderer: any = null;
+  private ghostingEnabled: boolean = false;
+  private trackedBoneName: string | null = null;
+  private trailPoints: {x: number, y: number}[] = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -124,6 +128,12 @@ export class SpineViewerEngine {
     if (this.state?.canvas.parentNode) {
       this.state.canvas.parentNode.removeChild(this.state.canvas);
     }
+    if (this.shapeRenderer) {
+      if (this.shapeRenderer.dispose) this.shapeRenderer.dispose();
+      this.shapeRenderer = null;
+    }
+    this.ghostingEnabled = false;
+    this.trailPoints = [];
     this.state = null;
   }
 
@@ -233,12 +243,65 @@ export class SpineViewerEngine {
         }
       }
     }
+    
+    const track = animState.getCurrent(0);
+    const originalAlpha = skeleton.color.a;
+    const currentTime = track ? track.trackTime : 0;
+    
+    // Draw Ghosting (Canvas2D)
+    if (this.ghostingEnabled && track && this.state.playing) {
+      const numGhosts = 3;
+      const interval = 0.05; // 50ms apart
+      
+      for (let i = numGhosts; i >= 1; i--) {
+        let ghostTime = currentTime - (i * interval * Math.sign(this.state.speed || 1));
+        if (ghostTime < 0) {
+          if (track.loop && track.animation.duration > 0) ghostTime += track.animation.duration;
+          else continue;
+        }
+        track.trackTime = ghostTime;
+        animState.apply(skeleton);
+        skeleton.updateWorldTransform();
+        skeleton.color.a = originalAlpha * (0.1 + 0.1 * (numGhosts - i + 1));
+        
+        try { this.state.renderer.draw(skeleton); } catch(e) {}
+      }
+      
+      // Restore for real render
+      track.trackTime = currentTime;
+      skeleton.color.a = originalAlpha;
+    }
+
     animState.apply(skeleton);
     skeleton.updateWorldTransform();
 
     try { this.state.renderer.draw(skeleton); } catch(e: any) {
       if (!this.renderErrorLogged) { this.renderErrorLogged = true; console.error('[RENDER-ERR]', e); }
     }
+
+    // Draw Trail (Canvas2D)
+    if (this.trackedBoneName) {
+      const bone = skeleton.findBone(this.trackedBoneName);
+      if (bone) {
+        if (this.state.playing) {
+          this.trailPoints.push({ x: bone.worldX, y: bone.worldY });
+          if (this.trailPoints.length > 50) this.trailPoints.shift();
+        }
+        if (this.trailPoints.length > 1) {
+          ctx2d.beginPath();
+          ctx2d.strokeStyle = '#00f0ff';
+          ctx2d.lineWidth = 2.5 / (this.state.baseScale * this.state.scale);
+          ctx2d.lineCap = 'round';
+          ctx2d.lineJoin = 'round';
+          for (let i = 0; i < this.trailPoints.length; i++) {
+            if (i === 0) ctx2d.moveTo(this.trailPoints[i].x, this.trailPoints[i].y);
+            else ctx2d.lineTo(this.trailPoints[i].x, this.trailPoints[i].y);
+          }
+          ctx2d.stroke();
+        }
+      }
+    }
+
     ctx2d.restore();
   }
 
@@ -356,12 +419,80 @@ export class SpineViewerEngine {
     this.state.renderer.end();
 
     if (batcher) { batcher.srcColorBlend = gl.SRC_ALPHA; batcher.srcAlphaBlend = gl.ONE; batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA; }
+    
+    const track = animState.getCurrent(0);
+    const originalAlpha = skeleton.color.a;
+    const currentTime = track ? track.trackTime : 0;
+    
+    // Draw Ghosting (WebGL)
+    if (this.ghostingEnabled && track && this.state.playing) {
+      const numGhosts = 4;
+      const interval = 0.05; // 50ms apart
+      
+      for (let i = numGhosts; i >= 1; i--) {
+        let ghostTime = currentTime - (i * interval * Math.sign(this.state.speed || 1));
+        if (ghostTime < 0) {
+          if (track.loop && track.animation.duration > 0) ghostTime += track.animation.duration;
+          else continue;
+        }
+        track.trackTime = ghostTime;
+        animState.apply(skeleton);
+        try {
+          skeleton.updateWorldTransform(spine4?.Physics?.update ?? spine4?.Physics?.none ?? 0 as any);
+        } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
+        
+        skeleton.color.a = originalAlpha * (0.05 + 0.1 * (numGhosts - i));
+        
+        this.state.renderer.begin();
+        try { this.state.renderer.drawSkeleton(skeleton, false); } catch(e) {}
+        this.state.renderer.end();
+      }
+      
+      // Restore for real render
+      track.trackTime = currentTime;
+      skeleton.color.a = originalAlpha;
+      animState.apply(skeleton);
+      try {
+        skeleton.updateWorldTransform(spine4?.Physics?.update ?? spine4?.Physics?.none ?? 0 as any);
+      } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
+    }
 
     this.state.renderer.begin();
     try { this.state.renderer.drawSkeleton(skeleton, false); } catch(e: any) {
       if (!this.renderErrorLogged) { this.renderErrorLogged = true; console.error('[RENDER-ERR]', e); }
     }
     this.state.renderer.end();
+
+    // Draw Trail (WebGL)
+    if (this.trackedBoneName && spine4) {
+      const bone = skeleton.findBone(this.trackedBoneName);
+      if (bone) {
+        if (this.state.playing) {
+          this.trailPoints.push({ x: bone.worldX, y: bone.worldY });
+          if (this.trailPoints.length > 50) this.trailPoints.shift();
+        }
+
+        if (this.trailPoints.length > 1) {
+          if (!this.shapeRenderer) {
+            this.shapeRenderer = new spine4.ShapeRenderer(gl);
+          }
+          if (batcher) {
+            batcher.srcColorBlend = gl.SRC_ALPHA;
+            batcher.srcAlphaBlend = gl.ONE;
+            batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
+          }
+          this.shapeRenderer.begin(this.state.renderer.camera);
+          this.shapeRenderer.setColor(0, 0.94, 1, 1); // #00f0ff (Cyan)
+          for (let i = 1; i < this.trailPoints.length; i++) {
+             const p1 = this.trailPoints[i - 1];
+             const p2 = this.trailPoints[i];
+             // Optional fade logic could be implemented by changing alpha per segment
+             this.shapeRenderer.line(p1.x, p1.y, p2.x, p2.y);
+          }
+          this.shapeRenderer.end();
+        }
+      }
+    }
 
     if (batcher) { batcher.srcColorBlend = gl.SRC_ALPHA; batcher.srcAlphaBlend = gl.ONE; batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA; }
   }
@@ -684,6 +815,19 @@ export class SpineViewerEngine {
   }
 
   // ── Control API ───────────────────────────────────────────────
+  getBones(): string[] {
+    return this.state?.skeleton?.data.bones.map((b: any) => b.name) ?? [];
+  }
+
+  setGhostingEnabled(enabled: boolean) {
+    this.ghostingEnabled = enabled;
+  }
+
+  setTrackedBone(boneName: string | null) {
+    this.trackedBoneName = boneName;
+    this.trailPoints = [];
+  }
+
   getAnimations(): string[] {
     return this.state?.skeleton?.data.animations.map((a: any) => a.name) ?? [];
   }
