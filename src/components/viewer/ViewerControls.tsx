@@ -147,10 +147,10 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
         )}
         <div className="flex gap-1">
           <button onClick={handlePlayBackward} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${(playing && reversing) ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title={(playing && reversing) ? 'Pause' : 'Reverse Play'}>
-            {(playing && reversing) ? <Pause size={12} /> : <Play size={12} style={{ transform: 'rotate(180deg)' }} />}
+            <Play size={12} style={{ transform: 'rotate(180deg)' }} />
           </button>
           <button onClick={handlePlayForward} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${(playing && !reversing) ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title={(playing && !reversing) ? 'Pause' : 'Play'}>
-            {(playing && !reversing) ? <Pause size={12} /> : <Play size={12} />}
+            <Play size={12} />
           </button>
           <button onClick={toggleLoop} className={`flex h-7 w-7 items-center justify-center rounded border border-border ${looping ? 'bg-accent text-white border-accent' : 'bg-panel-secondary text-dim'} hover:bg-accent hover:text-white`} title="Loop">
             <Repeat size={12} />
@@ -242,10 +242,10 @@ export function ViewerControls({ viewerRef, animations, skins, compact, initialA
           <label className="control-label">Playback</label>
           <div className="control-row">
             <button onClick={handlePlayBackward} className={`control-btn ${(playing && reversing) ? 'active' : ''}`} title={(playing && reversing) ? 'Pause' : 'Reverse Play'}>
-              {(playing && reversing) ? <Pause size={14} /> : <Play size={14} style={{ transform: 'rotate(180deg)' }} />}
+              <Play size={14} style={{ transform: 'rotate(180deg)' }} />
             </button>
             <button onClick={handlePlayForward} className={`control-btn ${(playing && !reversing) ? 'active' : ''}`} title={(playing && !reversing) ? 'Pause' : 'Play'}>
-              {(playing && !reversing) ? <Pause size={14} /> : <Play size={14} />}
+              <Play size={14} />
             </button>
             <button onClick={toggleLoop} className={`control-btn ${looping ? 'active' : ''}`} title="Loop">
               <Repeat size={14} />
