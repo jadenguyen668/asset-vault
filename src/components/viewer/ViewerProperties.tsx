@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { Character, Project, Collection, AssetStatus } from '@/types/database';
 import { Box, Calendar, FileText, Tag, Bone, Layers, Film, HardDrive, Edit2, Save, X, FolderOpen } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Props {
   character: Character | null;
@@ -15,8 +16,13 @@ const NAMING_LOCATIONS = ['LOB', 'ING', 'CMN', 'PL', 'EN'];
 const PROJECT_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e'];
 
 export function ViewerProperties({ character, projects = [], collections = [], onUpdate }: Props) {
+  const { profile, isAdmin } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   
+  // Calculate ownership permissions
+  const isOwner = profile?.id === character?.user_id;
+  const canEditChar = isAdmin || isOwner;
+
   // States
   const [editName, setEditName] = useState('');
   const [editStatus, setEditStatus] = useState<AssetStatus>('draft');
@@ -144,7 +150,7 @@ export function ViewerProperties({ character, projects = [], collections = [], o
           <Box size={12} className="text-accent" />
           <span className="text-[10px] font-semibold uppercase tracking-widest text-dim font-mono">Properties</span>
         </div>
-        {onUpdate && (
+        {onUpdate && canEditChar && (
           isEditing ? (
             <div className="flex gap-2">
               <button onClick={() => setIsEditing(false)} className="text-dim hover:text-white"><X size={14} /></button>

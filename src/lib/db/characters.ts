@@ -16,16 +16,79 @@ async function getUserId(): Promise<string> {
 export async function saveCharacter(char: Omit<Character, 'id' | 'created_at'>): Promise<number> {
   const supabase = createClient();
   const userId = await getUserId();
-  const row = { ...char, user_id: userId };
+  
+  // Build clean row — only include DB-valid fields
+  const row: Record<string, any> = {
+    user_id: userId,
+    name: char.name || 'Untitled',
+    json_name: char.json_name,
+    asset_type: char.asset_type || 'spine',
+    mime_type: char.mime_type || null,
+    spine_version: char.spine_version || '',
+    major_version: char.major_version ?? 3,
+    minor_version: char.minor_version ?? 8,
+    json_text: char.json_text || '',
+    atlas_text: char.atlas_text || '',
+    bone_count: char.bone_count ?? 0,
+    slot_count: char.slot_count ?? 0,
+    anim_count: char.anim_count ?? 0,
+    anim_names: char.anim_names || [],
+    skin_count: char.skin_count ?? 0,
+    file_size: char.file_size ?? 0,
+    json_size: char.json_size ?? 0,
+    atlas_size: char.atlas_size ?? 0,
+    png_sizes: char.png_sizes || [],
+    tags: char.tags || [],
+    notes: char.notes || '',
+    status: char.status || 'draft',
+    imported_at: char.imported_at || new Date().toISOString(),
+    last_viewed_at: char.last_viewed_at || new Date().toISOString(),
+  };
+  // Optional fields — only include if they have values (some may not exist on Cloud DB yet)
+  const optionalFields: Record<string, any> = {
+    allow_download: char.allow_download ?? true,
+    collection_ids: char.collection_ids || [],
+    preview_config: char.preview_config || undefined,
+    json_path: char.json_path || undefined,
+    atlas_path: char.atlas_path || undefined,
+    png_paths: (char.png_paths && char.png_paths.length > 0) ? char.png_paths : undefined,
+    project_id: char.project_id || undefined,
+    thumbnail: char.thumbnail || undefined,
+  };
+  for (const [k, v] of Object.entries(optionalFields)) {
+    if (v !== undefined) row[k] = v;
+  }
+
+  console.log('[saveCharacter] userId:', userId, '| json_name:', row.json_name);
+
   const { data: existing } = await supabase.from('characters').select('id').eq('json_name', char.json_name).eq('user_id', userId).maybeSingle();
   if (existing) {
     const { error: updateError } = await supabase.from('characters').update(row).eq('id', existing.id);
-    if (updateError) throw updateError;
+    if (updateError) { console.error('[saveCharacter] UPDATE error:', updateError); throw updateError; }
+    console.log('[saveCharacter] Updated existing id:', existing.id);
     return existing.id;
   }
-  const { data, error } = await supabase.from('characters').insert(row).select('id').single();
-  if (error) throw error;
-  return data.id;
+  
+  // Try insert — auto-retry by stripping unknown columns if DB schema is out of date
+  let insertRow = { ...row };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data, error } = await supabase.from('characters').insert(insertRow).select('id').single();
+    if (!error) {
+      console.log('[saveCharacter] Inserted new id:', data.id);
+      return data.id;
+    }
+    // If error is about a missing column, strip it and retry
+    const colMatch = error.message?.match(/Could not find the '(\w+)' column/);
+    if (colMatch) {
+      const badCol = colMatch[1];
+      console.warn(`[saveCharacter] Column '${badCol}' not found on Cloud DB, stripping and retrying...`);
+      delete insertRow[badCol];
+      continue;
+    }
+    console.error('[saveCharacter] INSERT error:', error);
+    throw error;
+  }
+  throw new Error('saveCharacter failed after retries');
 }
 
 export async function getAllCharacters(): Promise<Character[]> {

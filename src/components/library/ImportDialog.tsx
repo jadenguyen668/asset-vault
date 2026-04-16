@@ -86,10 +86,26 @@ export function ImportDialog({ sets, projects, onConfirm, onCancel }: Props) {
   const [selectedColor, setSelectedColor] = useState(PROJECT_COLORS[7]);
 
   useEffect(() => {
+    let isMounted = true;
+    let timeoutId: any;
+    
     async function load() {
       try {
         const names = sets.map(s => s.spineFiles.jsonName);
-        const dupes = await findDuplicates(names);
+        
+        // Timeout bảo vệ nếu findDuplicates bị kẹt backend/RLS
+        const dupes = await Promise.race([
+          findDuplicates(names),
+          new Promise<Map<string, Character>>((resolve) => {
+            timeoutId = setTimeout(() => {
+              console.warn("findDuplicates timeout - proceeding anyway");
+              resolve(new Map());
+            }, 3000);
+          })
+        ]);
+        
+        if (!isMounted) return;
+
         const newItems: ImportDialogItem[] = sets.map(set => {
           const isDup = dupes.has(set.spineFiles.jsonName);
           let fileSize = new Blob([set.spineFiles.jsonText]).size + new Blob([set.spineFiles.atlasText]).size;
@@ -108,10 +124,15 @@ export function ImportDialog({ sets, projects, onConfirm, onCancel }: Props) {
       } catch (err) {
         console.error("Failed to load dialog:", err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     load();
+    
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [sets]);
 
   const projectCodeStr = useMemo(() => {
