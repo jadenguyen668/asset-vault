@@ -108,6 +108,9 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         if (data.success && data.jsonText) {
           finalJsonText = data.jsonText;
           finalSpineVersion = data.newVersion || targetVersion;
+          if (data.warning) {
+            alert(data.warning);
+          }
         }
       }
 
@@ -714,6 +717,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 playbackConfigRef={globalPlaybackConfigRef}
                 onConfigChange={handleConfigChange}
                 onExportBundle={selectedChar && selectedChar.allow_download ? handleExportBundle : undefined}
+                spineVersion={selectedChar?.spine_version}
               />
             </div>
             {/* Right: Properties */}

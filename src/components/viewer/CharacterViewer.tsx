@@ -124,6 +124,9 @@ export function CharacterViewer({ character }: Props) {
         if (data.success && data.jsonText) {
           finalJsonText = data.jsonText;
           finalSpineVersion = data.newVersion || targetVersion;
+          if (data.warning) {
+            alert(data.warning);
+          }
         }
       }
 
@@ -250,6 +253,7 @@ export function CharacterViewer({ character }: Props) {
             playbackConfigRef={playbackConfigRef}
             onConfigChange={handleConfigChange}
             onExportBundle={character.allow_download !== false ? handleExportBundle : undefined}
+            spineVersion={character.spine_version}
           />
         )}
       </div>

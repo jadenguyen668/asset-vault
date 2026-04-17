@@ -4,6 +4,13 @@ import { useRef } from 'react';
 import { Play, Pause, RotateCcw, Repeat, ZoomIn, ZoomOut, Image as ImageIcon, ImageOff, Rewind } from 'lucide-react';
 import type { SpineViewerHandle } from './SpineViewer';
 
+const AVAILABLE_VERSIONS = [
+  { value: '4.2', label: 'Spine 4.2', major: 4, minor: 2 },
+  { value: '4.1', label: 'Spine 4.1', major: 4, minor: 1 },
+  { value: '4.0', label: 'Spine 4.0', major: 4, minor: 0 },
+  { value: '3.8', label: 'Spine 3.8', major: 3, minor: 8 },
+];
+
 interface ViewerControlsProps {
   viewerRef: React.RefObject<SpineViewerHandle | null>;
   animations: string[];
@@ -17,9 +24,10 @@ interface ViewerControlsProps {
   playbackConfigRef?: React.MutableRefObject<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>;
   onConfigChange?: (config: { speed: number; scale: number }) => void;
   onExportBundle?: (version?: string) => void;
+  spineVersion?: string;
 }
 
-export function ViewerControls({ viewerRef, animations, skins, bones = [], compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef, onConfigChange, onExportBundle }: ViewerControlsProps) {
+export function ViewerControls({ viewerRef, animations, skins, bones = [], compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef, onConfigChange, onExportBundle, spineVersion }: ViewerControlsProps) {
   const [currentAnim, setCurrentAnim] = useState(initialAnimation || animations[0] || '');
   const [currentSkin, setCurrentSkin] = useState(skins[0] || '');
   const [ghosting, setGhosting] = useState<boolean>(false);
@@ -329,40 +337,46 @@ export function ViewerControls({ viewerRef, animations, skins, bones = [], compa
           </div>
         </div>
         {/* Export */}
-        {onExportBundle && (
-          <div className="control-group mt-2">
-            <label className="control-label">Tải Tích Hợp (Export)</label>
-            <div className="flex gap-1 w-full">
-              <select 
-                className="control-select flex-1"
-                onChange={(e) => {
-                  const selectEl = e.target as HTMLSelectElement;
-                  selectEl.dataset.version = e.target.value;
-                }}
-                id="export-version-select"
-                defaultValue="current"
-              >
-                <option value="current">Bản Hiện Tại</option>
-                <option value="4.2">Spine 4.2</option>
-                <option value="4.1">Spine 4.1</option>
-                <option value="4.0">Spine 4.0</option>
-                <option value="3.8">Spine 3.8</option>
-              </select>
-              <button 
-                onClick={() => {
-                  const selectEl = document.getElementById('export-version-select') as HTMLSelectElement;
-                  const ver = selectEl?.value === 'current' ? undefined : selectEl?.value;
-                  onExportBundle(ver);
-                }} 
-                className="control-btn" 
-                title="Download release bundle" 
-                style={{ width: '32px', flexShrink: 0, background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' }}
-              >
-                <span>⬇️</span>
-              </button>
+        {onExportBundle && (() => {
+          const vParts = (spineVersion || '').split('.');
+          const curMajor = parseInt(vParts[0]) || 0;
+          const curMinor = parseInt(vParts[1]) || 0;
+          const convertOptions = AVAILABLE_VERSIONS.filter(v => 
+            !(v.major === curMajor && v.minor === curMinor)
+          ).map(v => ({
+            ...v,
+            isUpgrade: v.major > curMajor || (v.major === curMajor && v.minor > curMinor)
+          }));
+          return (
+            <div className="control-group mt-2">
+              <label className="control-label">Tải Tích Hợp (Export)</label>
+              <div className="flex gap-1 w-full">
+                <select 
+                  className="control-select flex-1"
+                  id="export-version-select"
+                  defaultValue="current"
+                >
+                  <option value="current">Bản Gốc (v{spineVersion || '?'})</option>
+                  {convertOptions.map(v => (
+                    <option key={v.value} value={v.value}>{v.isUpgrade ? '⬆' : '⬇'} {v.label}</option>
+                  ))}
+                </select>
+                <button 
+                  onClick={() => {
+                    const selectEl = document.getElementById('export-version-select') as HTMLSelectElement;
+                    const ver = selectEl?.value === 'current' ? undefined : selectEl?.value;
+                    onExportBundle(ver);
+                  }} 
+                  className="control-btn" 
+                  title="Download release bundle" 
+                  style={{ width: '32px', flexShrink: 0, background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' }}
+                >
+                  <span>⬇️</span>
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Background */}
