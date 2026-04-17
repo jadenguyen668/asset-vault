@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import type { Character, Project, Collection, AssetStatus } from '@/types/database';
-import { Box, Calendar, FileText, Tag, Bone, Layers, Film, HardDrive, Edit2, Save, X, FolderOpen, Plus } from 'lucide-react';
+import { Box, Calendar, FileText, Tag, Bone, Layers, Film, HardDrive, Edit2, Save, X, FolderOpen, Plus, LockKeyhole } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { createClient } from '@/lib/supabase/client';
 
@@ -164,7 +164,7 @@ export function ViewerProperties({ character, projects = [], collections: initia
               <button onClick={handleSave} className="text-accent hover:text-accent-light"><Save size={14} /></button>
             </div>
           ) : (
-            <button onClick={() => setIsEditing(true)} className="text-dim hover:text-white"><Edit2 size={12} /></button>
+            <button key="unlock" onClick={() => setIsEditing(true)} className="text-dim hover:text-white"><LockKeyhole size={12} /></button>
           )
         )}
       </div>

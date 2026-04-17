@@ -424,7 +424,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
       // Only send DB-safe fields to avoid 400 errors
       const dbUpdates: Record<string, any> = {};
-      const safeFields = ['name', 'status', 'tags', 'notes', 'project_id', 'collection_ids'];
+      const safeFields = ['name', 'status', 'tags', 'notes', 'project_id', 'collection_ids', 'allow_download'];
       for (const key of safeFields) {
         if (key in updates) {
           dbUpdates[key] = (updates as any)[key];
