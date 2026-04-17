@@ -137,7 +137,8 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
         bgConfigRef.current.offsetY += normDy;
       }
     } else {
-      engineRef.current.setOffset(dx * dpr, dy * dpr);
+      const vz = engineRef.current.getViewZoom();
+      engineRef.current.setOffset((dx * dpr) / vz, (dy * dpr) / vz);
     }
   }, [bgConfigRef]);
 
@@ -169,6 +170,12 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
     return () => el.removeEventListener('wheel', onWheel);
   }, [bgConfigRef]);
 
+  const handleDoubleClick = useCallback(() => {
+    if (!engineRef.current) return;
+    engineRef.current.resetOffset();
+    engineRef.current.setViewZoom(1);
+  }, []);
+
   return (
     <div className={`spine-viewer-wrapper ${className || ''}`} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#1a1a2e' }}>
       <div
@@ -178,6 +185,7 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
       />
       {loading && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', zIndex: 10 }}>
