@@ -222,13 +222,17 @@ export class SpineViewerEngine {
       ctx2d.drawImage(this.state.bgImage, bx, by, imgW, imgH);
     }
 
-    // Crosshair
+    // Crosshair (Origin)
     const originX = w / 2 + this.state.offsetX;
     const originY = h * 0.85 + this.state.offsetY;
     const ext = Math.max(w, h) / vz + 2000;
-    ctx2d.strokeStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx2d.lineWidth = 3 / vz;
+    
+    ctx2d.lineWidth = 1 / vz;
+    // X Axis (Red)
+    ctx2d.strokeStyle = 'rgba(255, 0, 0, 0.5)';
     ctx2d.beginPath(); ctx2d.moveTo(originX - ext, originY); ctx2d.lineTo(originX + ext, originY); ctx2d.stroke();
+    // Y Axis (Green)
+    ctx2d.strokeStyle = 'rgba(0, 255, 0, 0.5)';
     ctx2d.beginPath(); ctx2d.moveTo(originX, originY - ext); ctx2d.lineTo(originX, originY + ext); ctx2d.stroke();
 
     ctx2d.translate(w / 2 + this.state.offsetX, h * 0.85 + this.state.offsetY);
@@ -380,12 +384,17 @@ export class SpineViewerEngine {
       this.state.renderer.drawTexture(this.checkerGlTexture, w / 2 - camW / 2, h / 2 - camH / 2, camW, camH);
     }
 
-    // Crosshair
+    // Crosshair (Origin)
     if (!this.crosshairGlTexture && spine4) {
       const pc = document.createElement('canvas'); pc.width = 1; pc.height = 1;
       const pctx = pc.getContext('2d')!;
-      pctx.fillStyle = 'rgba(0, 0, 0, 0.55)'; pctx.fillRect(0, 0, 1, 1);
+      pctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; pctx.fillRect(0, 0, 1, 1);
       this.crosshairGlTexture = new spine4.GLTexture(gl, pc as any);
+
+      const pcY = document.createElement('canvas'); pcY.width = 1; pcY.height = 1;
+      const pctxY = pcY.getContext('2d')!;
+      pctxY.fillStyle = 'rgba(0, 255, 0, 0.5)'; pctxY.fillRect(0, 0, 1, 1);
+      (this as any).crosshairGlTextureY = new spine4.GLTexture(gl, pcY as any);
     }
 
     // Background image
@@ -409,12 +418,15 @@ export class SpineViewerEngine {
 
     // Crosshair lines
     if (this.crosshairGlTexture) {
-      const lineW = 3 / vz;
+      const lineW = 1 / vz;
       const ox = w / 2 + this.state.offsetX, oy = h * 0.2 - this.state.offsetY;
       const camW = w / vz, camH = h / vz;
       const vpLeft = w / 2 - camW / 2, vpTop = h / 2 - camH / 2;
+      // X axis (horizontal line -> red)
       this.state.renderer.drawTexture(this.crosshairGlTexture, vpLeft, oy - lineW / 2, camW, lineW);
-      this.state.renderer.drawTexture(this.crosshairGlTexture, ox - lineW / 2, vpTop, lineW, camH);
+      // Y axis (vertical line -> green)
+      const texY = (this as any).crosshairGlTextureY || this.crosshairGlTexture;
+      this.state.renderer.drawTexture(texY, ox - lineW / 2, vpTop, lineW, camH);
     }
     this.state.renderer.end();
 
@@ -532,6 +544,8 @@ export class SpineViewerEngine {
     this.bgGlTexture = null;
     this.bgImageSrc = '';
     this.checkerGlTexture = null;
+    this.crosshairGlTexture = null;
+    (this as any).crosshairGlTextureY = null;
 
     if (detectedMajor < 4) {
       await this.loadSpine3x(files, detectedMinor);
