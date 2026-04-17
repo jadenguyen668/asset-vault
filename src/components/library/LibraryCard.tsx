@@ -1,6 +1,6 @@
 'use client';
 import type { Character } from '@/types/database';
-import { Eye, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 interface Props {
   character: Character;
@@ -13,27 +13,62 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
   return (
     <div
       onClick={() => onClick?.(character)}
-      className={`group relative flex w-[140px] cursor-pointer flex-col overflow-hidden rounded-[10px] border transition-all hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(124,92,252,0.15)] ${isSelected ? 'border-accent bg-accent/10' : 'border-border bg-panel-secondary hover:border-accent'}`}
-      style={{ minHeight: '170px' }}
+      className={`group relative flex w-[160px] cursor-pointer flex-col overflow-hidden rounded-xl border transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_6px_24px_rgba(124,92,252,0.2)] ${isSelected ? 'border-accent ring-2 ring-accent/30 bg-accent/5' : 'border-border bg-panel-secondary hover:border-accent/60'}`}
     >
-      <div className="relative flex h-24 items-center justify-center overflow-hidden bg-bg">
-        {character.thumbnail ? <img src={character.thumbnail} alt={character.name} className="h-full w-full object-contain" /> : <span className="text-3xl opacity-30">🦴</span>}
-        <div className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 flex gap-1">
-          <button className="flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-accent-light backdrop-blur-sm"><Eye className="h-3 w-3" /></button>
+      {/* Thumbnail — fixed aspect ratio, centered */}
+      <div className="relative aspect-square w-full overflow-hidden bg-[#12121e]">
+        {/* Checkerboard background pattern */}
+        <div 
+          className="absolute inset-0 opacity-[0.04]" 
+          style={{ 
+            backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)',
+            backgroundSize: '16px 16px',
+            backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px'
+          }} 
+        />
+        {character.thumbnail ? (
+          <img 
+            src={character.thumbnail} 
+            alt={character.name} 
+            className="absolute inset-0 h-full w-full object-cover drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]" 
+            draggable={false}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <span className="text-4xl opacity-20">🦴</span>
+          </div>
+        )}
+        
+        {/* Hover action buttons */}
+        <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => { e.stopPropagation(); onDelete?.(character); }}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-500 transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600/70 text-white backdrop-blur-sm hover:bg-red-500 transition-colors"
             title="Delete"
           >
-            <Trash2 className="h-3 w-3" />
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
+
+        {/* Bottom gradient overlay */}
+        <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#12121e] to-transparent" />
       </div>
-      <div className="flex flex-1 flex-col p-1.5">
-        <span className="text-xs font-semibold text-text" style={{ overflowWrap: 'anywhere', wordBreak: 'break-all' }}>{character.name}</span>
-        <div className="mt-0.5 flex flex-wrap gap-1 font-mono text-[10px] text-dim" style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {character.asset_type === 'spine' && <span className="rounded bg-accent/10 px-1 text-accent">v{character.spine_version}</span>}
-          {character.asset_type === 'spine' && <span>{character.anim_count} anims</span>}
+
+      {/* Info section */}
+      <div className="flex flex-col gap-0.5 px-2.5 py-2">
+        <span 
+          className="text-[11px] font-semibold text-text leading-tight line-clamp-2" 
+          title={character.name}
+        >
+          {character.name}
+        </span>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-dim" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {character.asset_type === 'spine' && (
+            <span className="rounded-sm bg-accent/15 px-1 py-px text-accent font-semibold">v{character.spine_version}</span>
+          )}
+          {character.asset_type === 'spine' && (
+            <span>{character.anim_count} anims</span>
+          )}
           <span>{(character.file_size / 1024).toFixed(0)}KB</span>
         </div>
       </div>

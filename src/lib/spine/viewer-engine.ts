@@ -227,7 +227,7 @@ export class SpineViewerEngine {
     const originY = h * 0.85 + this.state.offsetY;
     const ext = Math.max(w, h) / vz + 2000;
     ctx2d.strokeStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx2d.lineWidth = 3;
+    ctx2d.lineWidth = 3 / vz;
     ctx2d.beginPath(); ctx2d.moveTo(originX - ext, originY); ctx2d.lineTo(originX + ext, originY); ctx2d.stroke();
     ctx2d.beginPath(); ctx2d.moveTo(originX, originY - ext); ctx2d.lineTo(originX, originY + ext); ctx2d.stroke();
 
@@ -409,7 +409,7 @@ export class SpineViewerEngine {
 
     // Crosshair lines
     if (this.crosshairGlTexture) {
-      const lineW = 3;
+      const lineW = 3 / vz;
       const ox = w / 2 + this.state.offsetX, oy = h * 0.2 - this.state.offsetY;
       const camW = w / vz, camH = h / vz;
       const vpLeft = w / 2 - camW / 2, vpTop = h / 2 - camH / 2;
@@ -663,11 +663,25 @@ export class SpineViewerEngine {
       rendererCtx.restore();
     };
 
-    // Auto-fit
+    // Auto-fit: unified rule
+    // 1. Use skeletonData.width/height (artist-defined in Spine Editor) — most consistent
+    // 2. Fallback to getBounds() if Spine Editor dimensions not set
     try {
-      const offset = new spine.Vector2(), size = new spine.Vector2();
-      skeleton.getBounds(offset, size, []);
-      this.state.baseScale = Math.min((this.state.canvas.height * 0.6) / (size.y || 400), 2);
+      const sdW = skeletonData.width || 0;
+      const sdH = skeletonData.height || 0;
+      let refH = sdH;
+      let refW = sdW;
+      if (refH <= 0 || refW <= 0) {
+        const offset = new spine.Vector2(), size = new spine.Vector2();
+        skeleton.getBounds(offset, size, []);
+        refH = size.y || 400;
+        refW = size.x || 400;
+      }
+      const ch = this.state.canvas.height;
+      const cw = this.state.canvas.width;
+      const scaleH = (ch * 0.8) / refH;
+      const scaleW = (cw * 0.8) / refW;
+      this.state.baseScale = Math.min(scaleH, scaleW, 3);
       this.state.scale = 1;
     } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 
@@ -801,10 +815,24 @@ export class SpineViewerEngine {
       skeleton.updateWorldTransform(spine4?.Physics?.update ?? spine4?.Physics?.none ?? 0 as any);
     } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
 
-    // Auto-fit
+    // Auto-fit: unified rule
+    // 1. Use skeletonData.width/height (artist-defined in Spine Editor) — most consistent
+    // 2. Fallback to getBoundsRect() if Spine Editor dimensions not set
     try {
-      const bounds = skeleton.getBoundsRect();
-      this.state.baseScale = Math.min((this.state.canvas.height * 0.6) / (bounds.height || 400), 2);
+      const sdW = skeletonData.width || 0;
+      const sdH = skeletonData.height || 0;
+      let refH = sdH;
+      let refW = sdW;
+      if (refH <= 0 || refW <= 0) {
+        const bounds = skeleton.getBoundsRect();
+        refH = bounds.height || 400;
+        refW = bounds.width || 400;
+      }
+      const ch = this.state.canvas.height;
+      const cw = this.state.canvas.width;
+      const scaleH = (ch * 0.8) / refH;
+      const scaleW = (cw * 0.8) / refW;
+      this.state.baseScale = Math.min(scaleH, scaleW, 3);
       this.state.scale = 1;
     } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 

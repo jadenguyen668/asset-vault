@@ -36,7 +36,7 @@ export function LibraryGrid({ characters, onCardClick, onDelete, selectedId }: P
   );
 
   return (
-    <div className="grid auto-rows-min justify-center gap-3 p-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, 140px)' }}>
+    <div className="grid auto-rows-min justify-center gap-4 p-4" style={{ gridTemplateColumns: 'repeat(auto-fill, 160px)' }}>
       {filtered.map((c) => <LibraryCard key={c.id} character={c} onClick={onCardClick} onDelete={onDelete} isSelected={selectedId === c.id} />)}
     </div>
   );
