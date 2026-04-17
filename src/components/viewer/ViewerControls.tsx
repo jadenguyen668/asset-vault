@@ -16,7 +16,7 @@ interface ViewerControlsProps {
   disableCharacterControls?: boolean;
   playbackConfigRef?: React.MutableRefObject<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>;
   onConfigChange?: (config: { speed: number; scale: number }) => void;
-  onExportBundle?: () => void;
+  onExportBundle?: (version?: string) => void;
 }
 
 export function ViewerControls({ viewerRef, animations, skins, bones = [], compact, initialAnimation, globalBgImage, onBgImageChange, disableCharacterControls, playbackConfigRef, onConfigChange, onExportBundle }: ViewerControlsProps) {
@@ -331,9 +331,36 @@ export function ViewerControls({ viewerRef, animations, skins, bones = [], compa
         {/* Export */}
         {onExportBundle && (
           <div className="control-group mt-2">
-            <button onClick={onExportBundle} className="control-btn" title="Download release bundle" style={{ width: '100%', gap: '6px', background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' }}>
-              <span className="text-xs font-bold uppercase tracking-wider">📦 Tải Tích Hợp</span>
-            </button>
+            <label className="control-label">Tải Tích Hợp (Export)</label>
+            <div className="flex gap-1 w-full">
+              <select 
+                className="control-select flex-1"
+                onChange={(e) => {
+                  const selectEl = e.target as HTMLSelectElement;
+                  selectEl.dataset.version = e.target.value;
+                }}
+                id="export-version-select"
+                defaultValue="current"
+              >
+                <option value="current">Bản Hiện Tại</option>
+                <option value="4.2">Spine 4.2</option>
+                <option value="4.1">Spine 4.1</option>
+                <option value="4.0">Spine 4.0</option>
+                <option value="3.8">Spine 3.8</option>
+              </select>
+              <button 
+                onClick={() => {
+                  const selectEl = document.getElementById('export-version-select') as HTMLSelectElement;
+                  const ver = selectEl?.value === 'current' ? undefined : selectEl?.value;
+                  onExportBundle(ver);
+                }} 
+                className="control-btn" 
+                title="Download release bundle" 
+                style={{ width: '32px', flexShrink: 0, background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' }}
+              >
+                <span>⬇️</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

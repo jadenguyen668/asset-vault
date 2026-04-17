@@ -79,52 +79,86 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     }, 1000);
   }, [selectedChar]);
 
-  const handleExportBundle = useCallback(async () => {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportBundle = useCallback(async (targetVersion?: string) => {
     if (!previewFiles || !selectedChar) return;
 
-    let currentConfig = typeof selectedChar.preview_config === 'object' && selectedChar.preview_config ? { ...selectedChar.preview_config } : {};
-    currentConfig.speed = globalPlaybackConfigRef.current.speed;
-    currentConfig.scale = globalPlaybackConfigRef.current.scale;
+    setIsExporting(true);
+    try {
+      let finalJsonText = previewFiles.jsonText;
+      let finalSpineVersion = selectedChar.spine_version;
 
-    const metaConfig: RuntimeMetaConfig = {
-      _format: 'spine-runtime-config',
-      _version: '1.0',
-      _generatedAt: new Date().toISOString(),
-      _generatedBy: 'Spine Asset Hub',
-      character: {
-        name: selectedChar.name,
-        spineVersion: selectedChar.spine_version,
-        jsonFile: selectedChar.json_name,
-        defaultSkin: skins[0] || 'default',
-        defaultAnimation: animations[0] || '',
-        baseScale: currentConfig.scale || 1.0,
-      },
-      animations: animations.map(a => ({
-        name: a,
-        timeScale: currentConfig.speed || 1.0,
-        mixDuration: 0.2,
-        loop: true,
-        fxIntensity: 1.0,
-        colorTint: null
-      })),
-      skins: skins.map(s => ({
-        name: s,
-        isDefault: s === skins[0],
-      })),
-      global: {
-        premultipliedAlpha: false,
-        physicsEnabled: true,
-        defaultMix: 0.2,
+      if (targetVersion && targetVersion !== 'current' && !selectedChar.spine_version.startsWith(targetVersion)) {
+        const response = await fetch('/api/convert-spine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            jsonText: previewFiles.jsonText, 
+            targetVersion: targetVersion 
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to convert spine version');
+        }
+
+        const data = await response.json();
+        if (data.success && data.jsonText) {
+          finalJsonText = data.jsonText;
+          finalSpineVersion = data.newVersion || targetVersion;
+        }
       }
-    };
 
-    await downloadAsZip({
-      jsonText: previewFiles.jsonText,
-      atlasText: previewFiles.atlasText,
-      pngBlobs: Array.from(previewFiles.pngBlobs.entries()).map(([k, v]) => ({ name: k, blob: v })),
-      jsonName: previewFiles.jsonName,
-      metaConfig
-    });
+      let currentConfig = typeof selectedChar.preview_config === 'object' && selectedChar.preview_config ? { ...selectedChar.preview_config } : {};
+      currentConfig.speed = globalPlaybackConfigRef.current.speed;
+      currentConfig.scale = globalPlaybackConfigRef.current.scale;
+
+      const metaConfig: RuntimeMetaConfig = {
+        _format: 'spine-runtime-config',
+        _version: '1.0',
+        _generatedAt: new Date().toISOString(),
+        _generatedBy: 'Spine Asset Hub',
+        character: {
+          name: selectedChar.name,
+          spineVersion: finalSpineVersion,
+          jsonFile: selectedChar.json_name,
+          defaultSkin: skins[0] || 'default',
+          defaultAnimation: animations[0] || '',
+          baseScale: currentConfig.scale || 1.0,
+        },
+        animations: animations.map(a => ({
+          name: a,
+          timeScale: currentConfig.speed || 1.0,
+          mixDuration: 0.2,
+          loop: true,
+          fxIntensity: 1.0,
+          colorTint: null
+        })),
+        skins: skins.map(s => ({
+          name: s,
+          isDefault: s === skins[0],
+        })),
+        global: {
+          premultipliedAlpha: false,
+          physicsEnabled: true,
+          defaultMix: 0.2,
+        }
+      };
+
+      await downloadAsZip({
+        jsonText: finalJsonText,
+        atlasText: previewFiles.atlasText,
+        pngBlobs: Array.from(previewFiles.pngBlobs.entries()).map(([k, v]) => ({ name: k, blob: v })),
+        jsonName: previewFiles.jsonName,
+        metaConfig
+      });
+    } catch (err: any) {
+      alert("Lỗi khi Export: " + err.message);
+    } finally {
+      setIsExporting(false);
+    }
   }, [previewFiles, selectedChar, animations, skins]);
 
   // Handle card click -> load character in preview (fetch PNGs from R2)
@@ -600,11 +634,18 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           onDrop={handleCanvasDrop}
         >
           {/* Loading overlay */}
-          {loadingChar && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50">
-              <div className="flex items-center gap-2 text-white">
-                <Loader2 className="h-5 w-5 animate-spin text-accent" />
-                <span className="text-sm font-semibold">Loading assets...</span>
+          {(loadingChar || isExporting) && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3 text-white">
+                <Loader2 className="h-8 w-8 animate-spin text-accent drop-shadow-md" />
+                <span className="text-sm font-semibold tracking-wide drop-shadow-md">
+                  {isExporting ? 'Đang chuyển đổi Spine Version...' : 'Đang tải Assets...'}
+                </span>
+                {isExporting && (
+                  <span className="text-[10px] text-white/70 font-mono tracking-widest text-center">
+                    QUÁ TRÌNH NÀY SẼ MẤT ÍT GIÂY TÙY VÀO DUNG LƯỢNG FILE
+                  </span>
+                )}
               </div>
             </div>
           )}

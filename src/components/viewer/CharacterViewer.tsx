@@ -95,52 +95,86 @@ export function CharacterViewer({ character }: Props) {
     }, 1000);
   }, [character.id, character.preview_config]);
 
-  const handleExportBundle = useCallback(async () => {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportBundle = useCallback(async (targetVersion?: string) => {
     if (!spineFiles) return;
 
-    let currentConfig = typeof character.preview_config === 'object' && character.preview_config ? { ...character.preview_config } : {};
-    currentConfig.speed = playbackConfigRef.current.speed;
-    currentConfig.scale = playbackConfigRef.current.scale;
+    setIsExporting(true);
+    try {
+      let finalJsonText = spineFiles.jsonText;
+      let finalSpineVersion = character.spine_version;
 
-    const metaConfig: RuntimeMetaConfig = {
-      _format: 'spine-runtime-config',
-      _version: '1.0',
-      _generatedAt: new Date().toISOString(),
-      _generatedBy: 'Spine Asset Hub',
-      character: {
-        name: character.name,
-        spineVersion: character.spine_version,
-        jsonFile: character.json_name,
-        defaultSkin: skins[0] || 'default',
-        defaultAnimation: animations[0] || '',
-        baseScale: currentConfig.scale || 1.0,
-      },
-      animations: animations.map(a => ({
-        name: a,
-        timeScale: currentConfig.speed || 1.0,
-        mixDuration: 0.2,
-        loop: true,
-        fxIntensity: 1.0,
-        colorTint: null
-      })),
-      skins: skins.map(s => ({
-        name: s,
-        isDefault: s === skins[0],
-      })),
-      global: {
-        premultipliedAlpha: false,
-        physicsEnabled: true,
-        defaultMix: 0.2,
+      if (targetVersion && targetVersion !== 'current' && !character.spine_version.startsWith(targetVersion)) {
+        const response = await fetch('/api/convert-spine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            jsonText: spineFiles.jsonText, 
+            targetVersion: targetVersion 
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to convert spine version');
+        }
+
+        const data = await response.json();
+        if (data.success && data.jsonText) {
+          finalJsonText = data.jsonText;
+          finalSpineVersion = data.newVersion || targetVersion;
+        }
       }
-    };
 
-    await downloadAsZip({
-      jsonText: spineFiles.jsonText,
-      atlasText: spineFiles.atlasText,
-      pngBlobs: Array.from(spineFiles.pngBlobs.entries()).map(([k, v]) => ({ name: k, blob: v })),
-      jsonName: spineFiles.jsonName,
-      metaConfig
-    });
+      let currentConfig = typeof character.preview_config === 'object' && character.preview_config ? { ...character.preview_config } : {};
+      currentConfig.speed = playbackConfigRef.current.speed;
+      currentConfig.scale = playbackConfigRef.current.scale;
+
+      const metaConfig: RuntimeMetaConfig = {
+        _format: 'spine-runtime-config',
+        _version: '1.0',
+        _generatedAt: new Date().toISOString(),
+        _generatedBy: 'Spine Asset Hub',
+        character: {
+          name: character.name,
+          spineVersion: finalSpineVersion,
+          jsonFile: character.json_name,
+          defaultSkin: skins[0] || 'default',
+          defaultAnimation: animations[0] || '',
+          baseScale: currentConfig.scale || 1.0,
+        },
+        animations: animations.map(a => ({
+          name: a,
+          timeScale: currentConfig.speed || 1.0,
+          mixDuration: 0.2,
+          loop: true,
+          fxIntensity: 1.0,
+          colorTint: null
+        })),
+        skins: skins.map(s => ({
+          name: s,
+          isDefault: s === skins[0],
+        })),
+        global: {
+          premultipliedAlpha: false,
+          physicsEnabled: true,
+          defaultMix: 0.2,
+        }
+      };
+
+      await downloadAsZip({
+        jsonText: finalJsonText,
+        atlasText: spineFiles.atlasText,
+        pngBlobs: Array.from(spineFiles.pngBlobs.entries()).map(([k, v]) => ({ name: k, blob: v })),
+        jsonName: spineFiles.jsonName,
+        metaConfig
+      });
+    } catch (err: any) {
+      alert("Lỗi khi Export: " + err.message);
+    } finally {
+      setIsExporting(false);
+    }
   }, [spineFiles, character, animations, skins]);
 
   if (loading) {
@@ -189,15 +223,24 @@ export function CharacterViewer({ character }: Props) {
       {/* Viewer + Controls */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 relative">
-          <SpineViewer
-            ref={viewerRef}
-            spineFiles={spineFiles}
-            majorVersion={character.major_version}
-            minorVersion={character.minor_version}
-            onLoaded={handleLoaded}
-            onError={(msg) => setError(msg)}
-          />
-        </div>
+            <SpineViewer
+              ref={viewerRef}
+              spineFiles={spineFiles}
+              majorVersion={character.major_version}
+              minorVersion={character.minor_version}
+              onLoaded={handleLoaded}
+              onError={(msg) => setError(msg)}
+            />
+            {isExporting && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-3 text-white">
+                  <Loader2 className="h-8 w-8 animate-spin text-accent drop-shadow-md" />
+                  <span className="text-sm font-semibold tracking-wide drop-shadow-md">Đang chuyển đổi Spine Version...</span>
+                  <span className="text-[10px] text-white/70 font-mono tracking-widest text-center">QUÁ TRÌNH NÀY SẼ MẤT ÍT GIÂY TÙY VÀO DUNG LƯỢNG FILE</span>
+                </div>
+              </div>
+            )}
+          </div>
         {(animations.length > 0 || skins.length > 0) && (
           <ViewerControls 
             viewerRef={viewerRef} 
