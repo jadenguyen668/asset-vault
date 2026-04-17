@@ -12,10 +12,11 @@ interface Props {
 }
 
 export function LibraryGrid({ characters, onCardClick, onDelete, selectedId }: Props) {
-  const { searchQuery, filterProjectId, filterType, sortBy } = useAppStore();
+  const { searchQuery, filterProjectId, filterCollectionId, filterType, sortBy } = useAppStore();
   let filtered = characters;
   if (searchQuery) { const q = searchQuery.toLowerCase(); filtered = filtered.filter((c) => c.name.toLowerCase().includes(q) || c.json_name.toLowerCase().includes(q)); }
   if (filterType === 'project' && filterProjectId) filtered = filtered.filter((c) => c.project_id === filterProjectId);
+  if (filterType === 'collection' && filterCollectionId) filtered = filtered.filter((c) => c.collection_ids?.includes(filterCollectionId));
 
   filtered = [...filtered].sort((a, b) => {
     switch (sortBy) {

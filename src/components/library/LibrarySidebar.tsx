@@ -6,7 +6,7 @@ import type { Project, Collection } from '@/types/database';
 interface Props { projects: Project[]; collections: Collection[]; }
 
 export function LibrarySidebar({ projects, collections }: Props) {
-  const { sidebarCollapsed, toggleSidebar, filterType, setFilterType, filterProjectId, setFilterProjectId } = useAppStore();
+  const { sidebarCollapsed, toggleSidebar, filterType, setFilterType, filterProjectId, setFilterProjectId, filterCollectionId, setFilterCollectionId } = useAppStore();
 
   if (sidebarCollapsed) {
     return (
@@ -36,7 +36,8 @@ export function LibrarySidebar({ projects, collections }: Props) {
         ))}
         <p className="mt-4 mb-1.5 ml-2 font-mono text-[10px] uppercase tracking-wider text-dim opacity-70">Collections</p>
         {collections.map((c) => (
-          <li key={c.id} className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-xs text-text hover:bg-accent/10">
+          <li key={c.id} onClick={() => { setFilterType('collection'); setFilterCollectionId(c.id); }}
+            className={`flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-xs ${filterType === 'collection' && filterCollectionId === c.id ? 'bg-gradient-to-r from-accent to-[#6d4fde] font-semibold text-white' : 'text-text hover:bg-accent/10'}`}>
             <FolderOpen className="h-3.5 w-3.5 text-dim" />{c.name}
           </li>
         ))}

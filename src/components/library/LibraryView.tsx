@@ -303,6 +303,16 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setShowImportDialog(false);
     try {
       const supabase = createClient();
+      let projectId = result.projectId;
+      
+      // If there's a new project created from ImportDialog, save it first
+      if (result.newProject) {
+        const { data: projData, error: projErr } = await supabase.from('projects').insert([
+          { code: result.newProject.code, name: result.newProject.name, color: result.newProject.color }
+        ]).select('id').single();
+        if (projData) projectId = projData.id;
+      }
+
       for (const item of result.selectedItems) {
         const charData: Omit<Character, 'id' | 'created_at'> = {
           user_id: '',
@@ -327,8 +337,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           tags: result.assetTags,
           notes: result.notes,
           status: 'draft',
-          project_id: result.projectId,
-          collection_ids: [],
+          project_id: projectId,
+          collection_ids: result.collectionIds || [],
           allow_download: true,
           json_path: null,
           atlas_path: null,
@@ -406,20 +416,31 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       const supabase = createClient();
       let projectId = updates.project_id;
       if (newProject) {
-        const { data: projData, error: projErr } = await supabase.from('projects').insert([
+        const { data: projData } = await supabase.from('projects').insert([
           { code: newProject.code, name: newProject.name, color: newProject.color }
         ]).select('id').single();
         if (projData) projectId = projData.id;
       }
-      const finalUpdates = { ...updates };
-      if (projectId !== undefined) {
-        finalUpdates.project_id = projectId;
-      } else {
-        delete finalUpdates.project_id;
+
+      // Only send DB-safe fields to avoid 400 errors
+      const dbUpdates: Record<string, any> = {};
+      const safeFields = ['name', 'status', 'tags', 'notes', 'project_id', 'collection_ids'];
+      for (const key of safeFields) {
+        if (key in updates) {
+          dbUpdates[key] = (updates as any)[key];
+        }
       }
-      
-      await supabase.from('characters').update(finalUpdates).eq('id', selectedChar.id);
-      setSelectedChar({ ...selectedChar, ...finalUpdates } as Character);
+      if (projectId !== undefined) {
+        dbUpdates.project_id = projectId;
+      }
+
+      console.log('[handleUpdateChar] Sending update:', dbUpdates);
+      const { error } = await supabase.from('characters').update(dbUpdates).eq('id', selectedChar.id);
+      if (error) {
+        console.error('[handleUpdateChar] Update error:', error);
+        return;
+      }
+      setSelectedChar({ ...selectedChar, ...dbUpdates } as Character);
       router.refresh();
     } catch(e) {
       console.error('Update failed', e);
@@ -662,6 +683,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         <ImportDialog 
           sets={activeSets} 
           projects={initialProjects} 
+          collections={initialCollections}
           onConfirm={handleConfirmImport} 
           onCancel={() => setShowImportDialog(false)} 
         />

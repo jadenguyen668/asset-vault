@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import type { ParsedSpineSet } from './DropZone';
-import type { Project, Character } from '@/types/database';
+import type { Project, Collection, Character } from '@/types/database';
 import { findDuplicates } from '@/lib/db/characters';
 import { NAMING_CATEGORIES, NAMING_LOCATIONS } from '@/lib/db/types';
-import { X, Check, Save } from 'lucide-react';
+import { X, Check, Save, Plus } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export interface ImportDialogItem {
   spineSet: ParsedSpineSet;
@@ -20,6 +21,7 @@ export interface ImportResult {
   selectedItems: ImportDialogItem[];
   projectId: number | null;
   newProject?: { name: string; code: string; color: string };
+  collectionIds: number[];
   assetTags: string[];
   notes: string;
 }
@@ -27,6 +29,7 @@ export interface ImportResult {
 interface Props {
   sets: ParsedSpineSet[];
   projects: Project[];
+  collections: Collection[];
   onConfirm: (result: ImportResult) => void;
   onCancel: () => void;
 }
@@ -65,9 +68,12 @@ function formatSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-export function ImportDialog({ sets, projects, onConfirm, onCancel }: Props) {
+export function ImportDialog({ sets, projects, collections: initialCollections, onConfirm, onCancel }: Props) {
   const [items, setItems] = useState<ImportDialogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [localCollections, setLocalCollections] = useState<Collection[]>(initialCollections || []);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const collections = localCollections;
 
   // Naming builder state
   const [builderCategory, setBuilderCategory] = useState('');
@@ -79,6 +85,7 @@ export function ImportDialog({ sets, projects, onConfirm, onCancel }: Props) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [newProjectCode, setNewProjectCode] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
   const [notes, setNotes] = useState('');
   const [assetTag, setAssetTag] = useState('Animation');
 
@@ -175,6 +182,7 @@ export function ImportDialog({ sets, projects, onConfirm, onCancel }: Props) {
     const res: ImportResult = {
       selectedItems,
       projectId: selectedProjectId !== '__new__' && selectedProjectId ? parseInt(selectedProjectId) : null,
+      collectionIds: selectedCollectionIds,
       assetTags: [assetTag],
       notes,
     };
@@ -300,6 +308,68 @@ export function ImportDialog({ sets, projects, onConfirm, onCancel }: Props) {
                        </div>
                     </div>
                  )}
+              </div>
+
+              {/* Collections Map */}
+              <div>
+                 <div className="text-xs font-bold uppercase tracking-widest text-dim mb-2">Collections</div>
+                 <div className="max-h-24 overflow-y-auto rounded border border-border bg-panel p-2 text-xs text-text space-y-1">
+                   {collections.length > 0 ? collections.map(c => (
+                     <label key={c.id} className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded">
+                       <input type="checkbox" checked={selectedCollectionIds.includes(c.id)} onChange={(e) => {
+                         if (e.target.checked) setSelectedCollectionIds(prev => [...prev, c.id]);
+                         else setSelectedCollectionIds(prev => prev.filter(id => id !== c.id));
+                       }} />
+                       <span className="truncate">{c.name}</span>
+                     </label>
+                   )) : <div className="text-dim italic">No collections yet</div>}
+                 </div>
+                 <div className="mt-1 flex gap-1">
+                   <input 
+                     type="text" 
+                     placeholder="+ New Collection" 
+                     className="flex-1 rounded border border-border bg-panel px-2 py-1.5 text-xs outline-none focus:border-accent text-text" 
+                     value={newCollectionName}
+                     onChange={e => setNewCollectionName(e.target.value)}
+                     onKeyDown={async (e) => {
+                       if (e.key === 'Enter') {
+                         const val = newCollectionName.trim();
+                         if (!val) return;
+                         e.preventDefault();
+                         try {
+                           const supabase = createClient();
+                           const { data, error } = await supabase.from('collections').insert([{ name: val, color: '#7c5cfc' }]).select('*').single();
+                           if (error) { console.error('[Collection] Create error:', error); return; }
+                           if (data) {
+                             setLocalCollections(prev => [...prev, data as Collection]);
+                             setSelectedCollectionIds(prev => [...prev, data.id]);
+                             setNewCollectionName('');
+                           }
+                         } catch (err) { console.error('[Collection] Create failed:', err); }
+                       }
+                     }}
+                   />
+                   <button
+                     type="button"
+                     className="rounded border border-border bg-accent/20 px-2 py-1 text-xs text-accent hover:bg-accent hover:text-white transition-colors"
+                     onClick={async () => {
+                       const val = newCollectionName.trim();
+                       if (!val) return;
+                       try {
+                         const supabase = createClient();
+                         const { data, error } = await supabase.from('collections').insert([{ name: val, color: '#7c5cfc' }]).select('*').single();
+                         if (error) { console.error('[Collection] Create error:', error); return; }
+                         if (data) {
+                           setLocalCollections(prev => [...prev, data as Collection]);
+                           setSelectedCollectionIds(prev => [...prev, data.id]);
+                           setNewCollectionName('');
+                         }
+                       } catch (err) { console.error('[Collection] Create failed:', err); }
+                     }}
+                   >
+                     <Plus size={12} />
+                   </button>
+                 </div>
               </div>
 
                {/* Meta Data */}

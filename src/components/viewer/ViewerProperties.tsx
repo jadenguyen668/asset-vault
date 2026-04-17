@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import type { Character, Project, Collection, AssetStatus } from '@/types/database';
-import { Box, Calendar, FileText, Tag, Bone, Layers, Film, HardDrive, Edit2, Save, X, FolderOpen } from 'lucide-react';
+import { Box, Calendar, FileText, Tag, Bone, Layers, Film, HardDrive, Edit2, Save, X, FolderOpen, Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { createClient } from '@/lib/supabase/client';
 
 interface Props {
   character: Character | null;
@@ -15,7 +16,7 @@ const NAMING_CATEGORIES = ['VFX', 'UI', 'ANM', 'CHR', 'OBJ', 'PRT', 'BG'];
 const NAMING_LOCATIONS = ['LOB', 'ING', 'CMN', 'PL', 'EN'];
 const PROJECT_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e'];
 
-export function ViewerProperties({ character, projects = [], collections = [], onUpdate }: Props) {
+export function ViewerProperties({ character, projects = [], collections: initialCollections = [], onUpdate }: Props) {
   const { profile, isAdmin } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   
@@ -31,6 +32,12 @@ export function ViewerProperties({ character, projects = [], collections = [], o
   const [editProject, setEditProject] = useState<string>('');
   const [editCollectionIds, setEditCollectionIds] = useState<number[]>([]);
   const [editAllowDownload, setEditAllowDownload] = useState(true);
+  const [localCollections, setLocalCollections] = useState<Collection[]>(initialCollections);
+  const [newCollectionName, setNewCollectionName] = useState('');
+
+  // Sync when server data changes
+  useEffect(() => { setLocalCollections(initialCollections); }, [initialCollections]);
+  const collections = localCollections;
 
   // New Project State
   const [newProjectCode, setNewProjectCode] = useState('');
@@ -261,6 +268,52 @@ export function ViewerProperties({ character, projects = [], collections = [], o
                       <FolderOpen size={12} className={editCollectionIds.includes(c.id) ? 'text-accent' : ''} /> {c.name}
                     </label>
                   ))}
+               </div>
+               <div className="mt-2 flex gap-1">
+                 <input 
+                   type="text" 
+                   placeholder="+ New Collection" 
+                   className="flex-1 rounded border border-border bg-panel px-2 py-1.5 text-xs outline-none focus:border-accent text-text" 
+                   value={newCollectionName}
+                   onChange={e => setNewCollectionName(e.target.value)}
+                   onKeyDown={async (e) => {
+                     if (e.key === 'Enter') {
+                       const val = newCollectionName.trim();
+                       if (!val) return;
+                       e.preventDefault();
+                       try {
+                         const supabase = createClient();
+                         const { data, error } = await supabase.from('collections').insert([{ name: val, color: '#7c5cfc' }]).select('*').single();
+                         if (error) { console.error('[Collection] Create error:', error); return; }
+                         if (data) {
+                           setLocalCollections(prev => [...prev, data as Collection]);
+                           setEditCollectionIds(prev => [...prev, data.id]);
+                           setNewCollectionName('');
+                         }
+                       } catch (err) { console.error('[Collection] Create failed:', err); }
+                     }
+                   }}
+                 />
+                 <button
+                   type="button"
+                   className="rounded border border-border bg-accent/20 px-2 py-1 text-xs text-accent hover:bg-accent hover:text-white transition-colors"
+                   onClick={async () => {
+                     const val = newCollectionName.trim();
+                     if (!val) return;
+                     try {
+                       const supabase = createClient();
+                       const { data, error } = await supabase.from('collections').insert([{ name: val, color: '#7c5cfc' }]).select('*').single();
+                       if (error) { console.error('[Collection] Create error:', error); return; }
+                       if (data) {
+                         setLocalCollections(prev => [...prev, data as Collection]);
+                         setEditCollectionIds(prev => [...prev, data.id]);
+                         setNewCollectionName('');
+                       }
+                     } catch (err) { console.error('[Collection] Create failed:', err); }
+                   }}
+                 >
+                   <Plus size={12} />
+                 </button>
                </div>
              </>
           ) : character.collection_ids && character.collection_ids.length > 0 && (
