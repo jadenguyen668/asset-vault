@@ -22,7 +22,7 @@ export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animat
       >
         {animations.map((anim, index) => (
           <div 
-            key={`${anim}-${index}`} 
+            key={`${spineFiles.jsonName}-${anim}-${index}`} 
             onDoubleClick={() => onSelectAnimation?.(anim)}
             className="flex flex-col border border-border bg-panel-secondary rounded shadow-sm overflow-hidden aspect-square hover:border-accent hover:shadow-md transition-all cursor-pointer"
           >
@@ -31,6 +31,7 @@ export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animat
             </div>
             <div className="flex-1 relative bg-[#1a1a2e]">
               <SpineViewer
+                key={`viewer-${spineFiles.jsonName}-${anim}`}
                 spineFiles={spineFiles}
                 majorVersion={majorVersion}
                 minorVersion={minorVersion}

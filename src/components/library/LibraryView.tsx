@@ -133,6 +133,10 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setPreviewCollapsed(false);
     setLoadingChar(true);
     setPreviewError(null);
+    // Use anim_names from DB immediately so Grid Mode has correct data
+    setAnimations(char.anim_names || []);
+    setSkins([]);
+    setBones([]);
 
     try {
       // Get JSON/Atlas text (from DB or R2)
