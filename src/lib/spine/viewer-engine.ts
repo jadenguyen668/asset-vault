@@ -78,6 +78,7 @@ export class SpineViewerEngine {
   private trackedBoneName: string | null = null;
   private trailPoints: {x: number, y: number}[] = [];
   private _capturingThumbnail = false;
+  private _dpr = window.devicePixelRatio || 1;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -86,7 +87,8 @@ export class SpineViewerEngine {
   // ── Init ──────────────────────────────────────────────────────
   init(): ViewerState {
     const rect = this.container.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.max(window.devicePixelRatio || 1, 2);
+    this._dpr = dpr;
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(rect.width * dpr);
@@ -142,7 +144,7 @@ export class SpineViewerEngine {
   private syncCanvasSize() {
     if (!this.state) return;
     const rect = this.container.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = this._dpr;
     const w = Math.round(rect.width * dpr);
     const h = Math.round(rect.height * dpr);
     if (this.state.canvas.width !== w || this.state.canvas.height !== h) {
@@ -540,7 +542,9 @@ export class SpineViewerEngine {
     void this.container.offsetHeight;
     this.container.appendChild(newCanvas);
     const rect = this.container.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    // Canvas2D (3.x) needs higher DPR to hide clip() seam artifacts; WebGL (4.x) doesn't
+    this._dpr = detectedMajor < 4 ? Math.max(window.devicePixelRatio || 1, 2) : (window.devicePixelRatio || 1);
+    const dpr = this._dpr;
     const rw = rect.width || 800;
     const rh = rect.height || 600;
     newCanvas.width = Math.round(rw * dpr);
@@ -675,8 +679,8 @@ export class SpineViewerEngine {
       const uvDet = _du1 * _dv2 - _du2 * _dv1;
       if (Math.abs(uvDet) < 1e-6) return;
       const cx = (x0 + x1 + x2) / 3, cy = (y0 + y1 + y2) / 3;
-      const globalScale = Math.abs((stateRef?.scale ?? 1) * (stateRef?.viewZoom ?? 1));
-      const expand = 0.6 / globalScale;
+      const globalScale = Math.abs((stateRef?.baseScale ?? 1) * (stateRef?.scale ?? 1) * (stateRef?.viewZoom ?? 1));
+      const expand = 0.4 / globalScale;
       const ex0 = x0 + (x0 - cx) * expand / Math.max(1, Math.hypot(x0 - cx, y0 - cy));
       const ey0 = y0 + (y0 - cy) * expand / Math.max(1, Math.hypot(x0 - cx, y0 - cy));
       const ex1 = x1 + (x1 - cx) * expand / Math.max(1, Math.hypot(x1 - cx, y1 - cy));
@@ -692,7 +696,7 @@ export class SpineViewerEngine {
       const e = x0 - a * u0 - c * v0, f = y0 - b * u0 - d * v0;
       if (!isFinite(a) || !isFinite(b) || !isFinite(c) || !isFinite(d)) return;
       rendererCtx.save(); rendererCtx.clip(); rendererCtx.transform(a, b, c, d, e, f);
-      rendererCtx.drawImage(img, 0, 0); rendererCtx.drawImage(img, 0, 0); rendererCtx.drawImage(img, 0, 0);
+      rendererCtx.drawImage(img, 0, 0);
       rendererCtx.restore();
     };
 
