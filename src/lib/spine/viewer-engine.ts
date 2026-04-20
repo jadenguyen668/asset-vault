@@ -77,6 +77,7 @@ export class SpineViewerEngine {
   private ghostingEnabled: boolean = false;
   private trackedBoneName: string | null = null;
   private trailPoints: {x: number, y: number}[] = [];
+  private _capturingThumbnail = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -170,9 +171,17 @@ export class SpineViewerEngine {
     }
 
     if (this._captureResolve && this.state.canvas) {
+      // Re-render without crosshair for clean thumbnail
+      this._capturingThumbnail = true;
+      if (this.state.runtimeVersion === '3.x') {
+        this.renderCanvas2D(0);
+      } else {
+        this.renderWebGL(0);
+      }
       const dataUrl = this.state.canvas.toDataURL('image/webp', 0.8);
       this._captureResolve(dataUrl);
       this._captureResolve = null;
+      this._capturingThumbnail = false;
     }
   };
 
@@ -222,18 +231,20 @@ export class SpineViewerEngine {
       ctx2d.drawImage(this.state.bgImage, bx, by, imgW, imgH);
     }
 
-    // Crosshair (Origin)
-    const originX = w / 2 + this.state.offsetX;
-    const originY = h * 0.85 + this.state.offsetY;
-    const ext = Math.max(w, h) / vz + 2000;
-    
-    ctx2d.lineWidth = 1 / vz;
-    // X Axis (Red)
-    ctx2d.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-    ctx2d.beginPath(); ctx2d.moveTo(originX - ext, originY); ctx2d.lineTo(originX + ext, originY); ctx2d.stroke();
-    // Y Axis (Green)
-    ctx2d.strokeStyle = 'rgba(0, 255, 0, 0.5)';
-    ctx2d.beginPath(); ctx2d.moveTo(originX, originY - ext); ctx2d.lineTo(originX, originY + ext); ctx2d.stroke();
+    // Crosshair (Origin) — skip when capturing thumbnail
+    if (!this._capturingThumbnail) {
+      const originX = w / 2 + this.state.offsetX;
+      const originY = h * 0.85 + this.state.offsetY;
+      const ext = Math.max(w, h) / vz + 2000;
+      
+      ctx2d.lineWidth = 1 / vz;
+      // X Axis (Red)
+      ctx2d.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+      ctx2d.beginPath(); ctx2d.moveTo(originX - ext, originY); ctx2d.lineTo(originX + ext, originY); ctx2d.stroke();
+      // Y Axis (Green)
+      ctx2d.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+      ctx2d.beginPath(); ctx2d.moveTo(originX, originY - ext); ctx2d.lineTo(originX, originY + ext); ctx2d.stroke();
+    }
 
     ctx2d.translate(w / 2 + this.state.offsetX, h * 0.85 + this.state.offsetY);
     ctx2d.scale(this.state.baseScale * this.state.scale, -this.state.baseScale * this.state.scale);
@@ -384,17 +395,19 @@ export class SpineViewerEngine {
       this.state.renderer.drawTexture(this.checkerGlTexture, w / 2 - camW / 2, h / 2 - camH / 2, camW, camH);
     }
 
-    // Crosshair (Origin)
-    if (!this.crosshairGlTexture && spine4) {
-      const pc = document.createElement('canvas'); pc.width = 1; pc.height = 1;
-      const pctx = pc.getContext('2d')!;
-      pctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; pctx.fillRect(0, 0, 1, 1);
-      this.crosshairGlTexture = new spine4.GLTexture(gl, pc as any);
+    // Crosshair (Origin) — skip when capturing thumbnail
+    if (!this._capturingThumbnail) {
+      if (!this.crosshairGlTexture && spine4) {
+        const pc = document.createElement('canvas'); pc.width = 1; pc.height = 1;
+        const pctx = pc.getContext('2d')!;
+        pctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; pctx.fillRect(0, 0, 1, 1);
+        this.crosshairGlTexture = new spine4.GLTexture(gl, pc as any);
 
-      const pcY = document.createElement('canvas'); pcY.width = 1; pcY.height = 1;
-      const pctxY = pcY.getContext('2d')!;
-      pctxY.fillStyle = 'rgba(0, 255, 0, 0.5)'; pctxY.fillRect(0, 0, 1, 1);
-      (this as any).crosshairGlTextureY = new spine4.GLTexture(gl, pcY as any);
+        const pcY = document.createElement('canvas'); pcY.width = 1; pcY.height = 1;
+        const pctxY = pcY.getContext('2d')!;
+        pctxY.fillStyle = 'rgba(0, 255, 0, 0.5)'; pctxY.fillRect(0, 0, 1, 1);
+        (this as any).crosshairGlTextureY = new spine4.GLTexture(gl, pcY as any);
+      }
     }
 
     // Background image
@@ -416,8 +429,8 @@ export class SpineViewerEngine {
       }
     }
 
-    // Crosshair lines
-    if (this.crosshairGlTexture) {
+    // Crosshair lines — skip when capturing thumbnail
+    if (this.crosshairGlTexture && !this._capturingThumbnail) {
       const lineW = 1 / vz;
       const ox = w / 2 + this.state.offsetX, oy = h * 0.2 - this.state.offsetY;
       const camW = w / vz, camH = h / vz;
@@ -546,6 +559,12 @@ export class SpineViewerEngine {
     this.checkerGlTexture = null;
     this.crosshairGlTexture = null;
     (this as any).crosshairGlTextureY = null;
+
+    // Reset viewport state for new character
+    this.state.viewZoom = 1;
+    this.state.offsetX = 0;
+    this.state.offsetY = 0;
+    this.state.scale = 1;
 
     if (detectedMajor < 4) {
       await this.loadSpine3x(files, detectedMinor);

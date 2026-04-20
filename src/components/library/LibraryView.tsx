@@ -230,10 +230,13 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         jsonName: char.json_name,
       });
 
-      // Apply saved preview_config
+      // Reset playback config to defaults, then apply saved config
       const parsedConfig = typeof char.preview_config === 'object' && char.preview_config ? (char.preview_config as any) : {};
       globalPlaybackConfigRef.current.speed = parsedConfig.speed ?? 1;
       globalPlaybackConfigRef.current.scale = parsedConfig.scale ?? 1;
+      globalPlaybackConfigRef.current.playing = true;
+      globalPlaybackConfigRef.current.looping = true;
+      globalPlaybackConfigRef.current.reversing = false;
 
       setPreviewMajor(char.major_version);
       setPreviewMinor(char.minor_version);
@@ -593,6 +596,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                <Save size={12} /> Save to Library
              </button>
           )}
+
           {hasPreview && animations.length > 0 && (
             <div className="flex border border-border rounded bg-panel-secondary ml-auto mr-2">
               <button 
