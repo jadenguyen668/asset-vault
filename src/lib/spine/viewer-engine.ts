@@ -618,10 +618,6 @@ export class SpineViewerEngine {
 
     // Parse atlas (convert 4.x atlas format to 3.x if needed)
     const atlasTextCompat = convertAtlas4xTo3x(files.atlasText);
-    if (atlasTextCompat !== files.atlasText) {
-      console.log('[SPINE VIEWER] Atlas converted 4.x→3.x. Original first 500:', files.atlasText.substring(0, 500));
-      console.log('[SPINE VIEWER] Converted first 500:', atlasTextCompat.substring(0, 500));
-    }
     const atlas = new spine.TextureAtlas(atlasTextCompat, (path: string) => {
       let img = images.get(path) || images.get(path + '.png') || images.get(path.replace(/\.png$/i, ''));
       if (!img) {

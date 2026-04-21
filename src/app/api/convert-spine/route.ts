@@ -79,20 +79,15 @@ export async function POST(req: Request) {
             const isDowngradingToLowerThan40 = !isUpgrade && (targetMajor < 4 || (targetMajor === 4 && targetMinor === 0));
 
             let processedJsonText = jsonText;
-
-            console.log(`[SPINE CONVERT] Version check: original=${originalMajor}.${originalMinor}, target=${targetMajor}.${targetMinor}, isUpgrade=${isUpgrade}, isDowngradingFromPhysics=${isDowngradingFromPhysics}, isDowngradingToLowerThan40=${isDowngradingToLowerThan40}`);
-
             if (isDowngradingFromPhysics || isDowngradingToLowerThan40) {
                 console.log(`[SPINE CONVERT] Pre-processing JSON (Physics/Clipping workaround)...`);
                 try {
-                    processedJsonText = await bakePhysics(jsonText, targetMajor, targetMinor);
+                    processedJsonText = await bakePhysics(jsonText);
                     console.log(`[SPINE CONVERT] Pre-processing OK. Original: ${jsonText.length} bytes, Processed: ${processedJsonText.length} bytes`);
                 } catch (bakeErr: any) {
-                    console.error(`[SPINE CONVERT] bakePhysics FAILED:`, bakeErr?.message, bakeErr?.stack);
+                    console.error(`[SPINE CONVERT] bakePhysics failed, using original JSON:`, bakeErr?.message);
                     processedJsonText = jsonText;
                 }
-            } else {
-                console.log(`[SPINE CONVERT] Skipping pre-processing (conditions not met)`);
             }
 
             await fs.writeFile(inputJsonPath, processedJsonText, 'utf-8');

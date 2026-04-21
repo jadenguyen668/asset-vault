@@ -1,24 +1,13 @@
 /**
  * Bakes physics simulations into standard keyframes so they can be exported to older Spine versions.
- * Only strips features that are truly unsupported in the target version.
- * 
- * Feature support matrix:
- * - Physics: 4.2+ only
- * - Clipping: 3.6+ (DO NOT strip for 3.8!)
- * - Sequence: 4.0+ only
+ * Also strips unsupported features (clipping, sequence) for lower versions.
  */
-export async function bakePhysics(
-    jsonText: string,
-    targetMajor: number = 3,
-    targetMinor: number = 8,
-    targetFps: number = 30
-): Promise<string> {
+export async function bakePhysics(jsonText: string, targetFps: number = 30): Promise<string> {
     const rawJson = JSON.parse(jsonText);
     
-    const hasPhysics = rawJson.physics && rawJson.physics.length > 0;
-    
-    if (!hasPhysics) {
-        return stripUnsupportedFeatures(rawJson, targetMajor, targetMinor);
+    // 1. Feature checks: if no physics, just strip and return
+    if (!rawJson.physics || rawJson.physics.length === 0) {
+        return stripUnsupportedFeatures(rawJson);
     }
 
     try {
@@ -60,15 +49,13 @@ export async function bakePhysics(
         const animationState = new spine.AnimationState(animationStateData);
 
         const stepTime = 1 / targetFps;
-        let totalBakedBones = 0;
-        let totalBakedAnims = 0;
 
         for (const anim of skeletonData.animations) {
             const animName = anim.name;
             skeleton.setToSetupPose();
             animationState.clearTracks();
             
-            // Pre-warm physics: let constraints settle at setup pose
+            // Pre-warm physics
             for (let i = 0; i < 30; i++) {
                 skeleton.update(0.033);
                 skeleton.updateWorldTransform(spine.Physics.update);
@@ -89,15 +76,13 @@ export async function bakePhysics(
             const duration = anim.duration;
             const framesCount = Math.max(1, Math.ceil(duration / stepTime));
 
-            const framesData: Record<string, { rotate: any[], translate: any[] }> = {};
+            const framesData: Record<string, { rotate: any[], translate: any[], scale: any[], shear: any[] }> = {};
             
             // Determine bones affected by physics
             for (const pConstraint of skeletonData.physicsConstraints) {
                 const bName = pConstraint.bone.name;
-                framesData[bName] = { rotate: [], translate: [] };
+                framesData[bName] = { rotate: [], translate: [], scale: [], shear: [] };
             }
-
-            if (Object.keys(framesData).length === 0) continue;
 
             let simulatedTime = 0;
             
@@ -114,11 +99,14 @@ export async function bakePhysics(
                     const bone = skeleton.bones[pConstraint.bone.index];
                     const bName = bone.data.name;
                     
-                    let rot = bone.rotation;
-                    let tx = bone.x;
-                    let ty = bone.y;
+                    let rot = bone.rotation - bone.data.rotation;
+                    let tx = bone.x - bone.data.x;
+                    let ty = bone.y - bone.data.y;
+                    let sx = bone.scaleX / bone.data.scaleX;
+                    let sy = bone.scaleY / bone.data.scaleY;
+                    let shx = bone.shearX - bone.data.shearX;
+                    let shy = bone.shearY - bone.data.shearY;
                     
-                    // Normalize rotation
                     while (rot > 180) rot -= 360;
                     while (rot < -180) rot += 360;
 
@@ -126,43 +114,57 @@ export async function bakePhysics(
                     const t = fmt(simulatedTime);
                     framesData[bName].rotate.push({ time: t, angle: fmt(rot) });
                     framesData[bName].translate.push({ time: t, x: fmt(tx), y: fmt(ty) });
+                    framesData[bName].scale.push({ time: t, x: fmt(sx), y: fmt(sy) });
+                    framesData[bName].shear.push({ time: t, x: fmt(shx), y: fmt(shy) });
                 }
             }
+
+            const hasVariance = (arr: any[], k1: string, k2?: string) => {
+                if (arr.length <= 1) return false;
+                const base = arr[0];
+                for (let i = 1; i < arr.length; i++) {
+                    if (arr[i][k1] !== base[k1]) return true;
+                    if (k2 && arr[i][k2] !== base[k2]) return true;
+                }
+                if (k1 === 'angle' && base.angle !== 0) return true;
+                if (k1 === 'x' && k2 === 'y' && (base.x !== 0 || base.y !== 0)) return true;
+                return false;
+            };
 
             for (const bName in framesData) {
                 if (!rawBonesAnim[bName]) rawBonesAnim[bName] = {};
                 
-                // Always write baked keyframes for physics bones (override any existing)
-                rawBonesAnim[bName].rotate = framesData[bName].rotate;
-                rawBonesAnim[bName].translate = framesData[bName].translate;
-                totalBakedBones++;
+                if (hasVariance(framesData[bName].rotate, 'angle')) {
+                    rawBonesAnim[bName].rotate = framesData[bName].rotate;
+                }
+                if (hasVariance(framesData[bName].translate, 'x', 'y')) {
+                    rawBonesAnim[bName].translate = framesData[bName].translate;
+                }
+                if (hasVariance(framesData[bName].scale, 'x', 'y')) {
+                    if (framesData[bName].scale.some((s: any) => s.x !== 1 || s.y !== 1)) {
+                        rawBonesAnim[bName].scale = framesData[bName].scale;
+                    }
+                }
+                if (hasVariance(framesData[bName].shear, 'x', 'y')) {
+                    rawBonesAnim[bName].shear = framesData[bName].shear;
+                }
             }
-            totalBakedAnims++;
         }
 
-        console.log(`[BAKE PHYSICS] Baked ${totalBakedBones} bone tracks across ${totalBakedAnims} animations at ${targetFps}fps`);
-        return stripUnsupportedFeatures(rawJson, targetMajor, targetMinor);
+        return stripUnsupportedFeatures(rawJson);
 
     } catch (e: any) {
-        console.error("[BAKE PHYSICS] Failed to bake physics, stripping only:", e?.message, e?.stack);
-        return stripUnsupportedFeatures(rawJson, targetMajor, targetMinor);
+        console.error("[BAKE PHYSICS] Failed to bake, stripping only:", e?.message);
+        return stripUnsupportedFeatures(rawJson);
     }
 }
 
 /**
- * Strips features not supported in the target Spine version.
- * Respects the feature support matrix:
- * - Physics: only in 4.2+ → always strip for lower
- * - Clipping: supported since 3.6 → keep for 3.6+
- * - Sequence: only in 4.0+ → strip for lower
+ * Strips features not supported in Spine 3.8 (e.g. sequence, clipping, physics)
  */
-function stripUnsupportedFeatures(rawJson: any, targetMajor: number, targetMinor: number): string {
-    const targetSupportsClipping = targetMajor > 3 || (targetMajor === 3 && targetMinor >= 6);
-    const targetSupportsSequence = targetMajor > 4 || (targetMajor === 4 && targetMinor >= 0);
-
-    // 1. Always remove physics (only 4.2+ supports it)
+function stripUnsupportedFeatures(rawJson: any): string {
+    // 1. Remove physics
     if (rawJson.physics) {
-        console.log(`[STRIP] Removing physics section (${rawJson.physics.length} constraints)`);
         delete rawJson.physics;
     }
 
@@ -174,7 +176,7 @@ function stripUnsupportedFeatures(rawJson: any, targetMajor: number, targetMinor
         }
     }
 
-    // 3. Only strip clipping and sequence if target doesn't support them
+    // 3. Remove clipping and sequences from skins
     if (rawJson.skins) {
         const skinsArray = Array.isArray(rawJson.skins) ? rawJson.skins : Object.values(rawJson.skins);
         
@@ -187,15 +189,9 @@ function stripUnsupportedFeatures(rawJson: any, targetMajor: number, targetMinor
                 for (const attName in slotMap) {
                     const att = slotMap[attName];
                     
-                    // Only strip clipping if target doesn't support it (< 3.6)
-                    if (att.type === 'clipping' && !targetSupportsClipping) {
-                        console.log(`[STRIP] Removing clipping attachment: ${attName} (target ${targetMajor}.${targetMinor} < 3.6)`);
+                    if (att.type === 'clipping') {
                         delete slotMap[attName];
-                    }
-                    
-                    // Only strip sequence if target doesn't support it (< 4.0)  
-                    if (att.sequence && !targetSupportsSequence) {
-                        console.log(`[STRIP] Removing sequence from: ${attName}`);
+                    } else if (att.sequence) {
                         delete att.sequence;
                     }
                 }
