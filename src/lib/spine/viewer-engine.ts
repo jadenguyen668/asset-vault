@@ -8,6 +8,8 @@
  * - dispose() method for cleanup
  */
 
+import { convertAtlas4xTo3x } from './atlas-converter';
+
 export interface SpineFiles {
   jsonText: string;
   atlasText: string;
@@ -614,8 +616,13 @@ export class SpineViewerEngine {
       URL.revokeObjectURL(url);
     }
 
-    // Parse atlas
-    const atlas = new spine.TextureAtlas(files.atlasText, (path: string) => {
+    // Parse atlas (convert 4.x atlas format to 3.x if needed)
+    const atlasTextCompat = convertAtlas4xTo3x(files.atlasText);
+    if (atlasTextCompat !== files.atlasText) {
+      console.log('[SPINE VIEWER] Atlas converted 4.x→3.x. Original first 500:', files.atlasText.substring(0, 500));
+      console.log('[SPINE VIEWER] Converted first 500:', atlasTextCompat.substring(0, 500));
+    }
+    const atlas = new spine.TextureAtlas(atlasTextCompat, (path: string) => {
       let img = images.get(path) || images.get(path + '.png') || images.get(path.replace(/\.png$/i, ''));
       if (!img) {
         for (const [k, v] of images) {

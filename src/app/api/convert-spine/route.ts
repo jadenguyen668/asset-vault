@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import os from 'os';
+import { bakePhysics } from '@/lib/spine/physics-baker';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,8 +52,6 @@ export async function POST(req: Request) {
         await fs.mkdir(outputDirPath, { recursive: true });
 
         try {
-            await fs.writeFile(inputJsonPath, jsonText, 'utf-8');
-            
             let originalVersionStr = '4.1.xx';
             try {
                 const parsedData = JSON.parse(jsonText);
@@ -73,17 +72,39 @@ export async function POST(req: Request) {
             const targetMajor = parseInt(targetParts[0]) || 0;
             const targetMinor = parseInt(targetParts[1]) || 0;
 
+            // Determine which Spine version to use
+            const isUpgrade = targetMajor > originalMajor || (targetMajor === originalMajor && targetMinor > originalMinor);
+
+            const isDowngradingFromPhysics = !isUpgrade && (originalMajor > 4 || (originalMajor === 4 && originalMinor >= 2)) && (targetMajor < 4 || (targetMajor === 4 && targetMinor < 2));
+            const isDowngradingToLowerThan40 = !isUpgrade && (targetMajor < 4 || (targetMajor === 4 && targetMinor === 0));
+
+            let processedJsonText = jsonText;
+
+            console.log(`[SPINE CONVERT] Version check: original=${originalMajor}.${originalMinor}, target=${targetMajor}.${targetMinor}, isUpgrade=${isUpgrade}, isDowngradingFromPhysics=${isDowngradingFromPhysics}, isDowngradingToLowerThan40=${isDowngradingToLowerThan40}`);
+
+            if (isDowngradingFromPhysics || isDowngradingToLowerThan40) {
+                console.log(`[SPINE CONVERT] Pre-processing JSON (Physics/Clipping workaround)...`);
+                try {
+                    processedJsonText = await bakePhysics(jsonText, targetMajor, targetMinor);
+                    console.log(`[SPINE CONVERT] Pre-processing OK. Original: ${jsonText.length} bytes, Processed: ${processedJsonText.length} bytes`);
+                } catch (bakeErr: any) {
+                    console.error(`[SPINE CONVERT] bakePhysics FAILED:`, bakeErr?.message, bakeErr?.stack);
+                    processedJsonText = jsonText;
+                }
+            } else {
+                console.log(`[SPINE CONVERT] Skipping pre-processing (conditions not met)`);
+            }
+
+            await fs.writeFile(inputJsonPath, processedJsonText, 'utf-8');
+
             // Check if same version → just return original
             if (originalMajor === targetMajor && originalMinor === targetMinor) {
                 return NextResponse.json({
                     success: true,
                     newVersion: originalVersionStr,
-                    jsonText: jsonText
+                    jsonText: processedJsonText
                 });
             }
-
-            // Determine which Spine version to use
-            const isUpgrade = targetMajor > originalMajor || (targetMajor === originalMajor && targetMinor > originalMinor);
 
             // Build export.json with target version field
             const exportSettings = {
@@ -95,6 +116,7 @@ export async function POST(req: Request) {
 
             console.log(`[SPINE CONVERT] Starting conversion ${originalVersionArg} -> ${formattedVersion} (${isUpgrade ? 'UPGRADE' : 'DOWNGRADE'}) via Spine CLI...`);
             console.log(`[SPINE CONVERT] Export settings:`, JSON.stringify(exportSettings));
+
 
             if (isUpgrade) {
                 // UPGRADE: Import with original version to create project, then export with target version
@@ -187,9 +209,12 @@ export async function POST(req: Request) {
 
     } catch (e: any) {
         console.error('[SPINE CONVERT ERROR]', e);
+        const stderr = e.stderr || '';
+        const stdout = e.stdout || '';
+        const detail = stderr || stdout || '';
         return NextResponse.json({ 
-            error: e.message || 'Failed to convert spine version',
-            details: e.stdout || e.stderr || '' 
+            error: `${e.message || 'Failed to convert spine version'}${detail ? '\n\nSpine CLI output:\n' + detail : ''}`,
+            details: detail
         }, { status: 500 });
     }
 }
