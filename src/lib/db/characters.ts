@@ -104,8 +104,15 @@ export async function getCharacter(id: number): Promise<Character | null> {
 }
 
 export async function deleteCharacter(id: number): Promise<void> {
-  const supabase = createClient();
-  await supabase.from('characters').delete().eq('id', id);
+  const res = await fetch('/api/admin/delete-character', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Delete failed (${res.status})`);
+  }
 }
 
 export async function updateCharacterMeta(id: number, meta: Partial<Pick<Character, 'name' | 'tags' | 'notes' | 'status' | 'project_id' | 'collection_ids'>>): Promise<void> {

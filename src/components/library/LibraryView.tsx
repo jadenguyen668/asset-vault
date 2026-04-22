@@ -35,6 +35,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [activeSets, setActiveSets] = useState<ParsedSpineSet[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
+  const [pendingDeleteChar, setPendingDeleteChar] = useState<Character | null>(null);
   const [previewFiles, setPreviewFiles] = useState<SpineFiles | null>(null);
   const [previewMajor, setPreviewMajor] = useState(3);
   const [previewMinor, setPreviewMinor] = useState(8);
@@ -440,8 +441,14 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     }
   }, [router, pendingThumbnail]);
 
-  const handleDeleteChar = useCallback(async (char: Character) => {
-    if (!confirm(`Delete "${char.name}" from library?`)) return;
+  const handleDeleteChar = useCallback((char: Character) => {
+    setPendingDeleteChar(char);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDeleteChar) return;
+    const char = pendingDeleteChar;
+    setPendingDeleteChar(null);
     try {
       await deleteCharacter(char.id);
       if (selectedChar?.id === char.id) {
@@ -449,10 +456,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         setPreviewFiles(null);
       }
       router.refresh();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Delete failed', e);
+      alert(`Delete failed: ${e?.message || 'Unknown error'}`);
     }
-  }, [selectedChar, router]);
+  }, [pendingDeleteChar, selectedChar, router]);
 
   const handleUpdateChar = useCallback(async (updates: Partial<Character>, newProject?: { code: string; name: string; color: string }) => {
     if (!selectedChar) return;
@@ -740,6 +748,20 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           onConfirm={handleConfirmImport} 
           onCancel={() => setShowImportDialog(false)} 
         />
+      )}
+
+      {/* Delete confirmation modal */}
+      {pendingDeleteChar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setPendingDeleteChar(null)}>
+          <div className="rounded-xl border border-border bg-panel p-6 shadow-2xl w-[340px]" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-text mb-2">Delete Character</h3>
+            <p className="text-sm text-dim mb-5">Delete <strong className="text-text">&quot;{pendingDeleteChar.name}&quot;</strong> from library? This cannot be undone.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPendingDeleteChar(null)} className="rounded-lg px-4 py-2 text-sm text-dim hover:text-text hover:bg-white/5 transition-colors">Cancel</button>
+              <button onClick={confirmDelete} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 transition-colors">Delete</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

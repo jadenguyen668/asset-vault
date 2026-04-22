@@ -1,7 +1,6 @@
 'use client';
 import type { Character } from '@/types/database';
 import { Trash2 } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
 
 interface Props {
   character: Character;
@@ -11,9 +10,6 @@ interface Props {
 }
 
 export function LibraryCard({ character, onClick, onDelete, isSelected }: Props) {
-  const { profile, isAdmin } = useAuth();
-  const canDelete = isAdmin || profile?.id === character.user_id;
-
   return (
     <div
       onClick={() => onClick?.(character)}
@@ -43,18 +39,22 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
           </div>
         )}
         
-        {/* Hover action buttons */}
-        <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {canDelete && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete?.(character); }}
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600/70 text-white backdrop-blur-sm hover:bg-red-500 transition-colors"
-              title="Delete"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        {/* Delete button — shown on hover when onDelete prop is provided */}
+        {onDelete && (
+          <button
+            onMouseDown={(e) => { e.stopPropagation(); }}
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              e.preventDefault();
+              onDelete(character); 
+            }}
+            className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-500 transition-colors opacity-0 group-hover:opacity-100"
+            title="Delete"
+            type="button"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
 
         {/* Bottom gradient overlay */}
         <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#12121e] to-transparent" />
