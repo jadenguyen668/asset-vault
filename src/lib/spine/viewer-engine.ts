@@ -855,13 +855,13 @@ export class SpineViewerEngine {
 
     // Patch: return null for missing regions instead of throwing
     const origNewRegion4 = atlasLoader.newRegionAttachment.bind(atlasLoader);
-    atlasLoader.newRegionAttachment = (skin: any, name: string, path: string) => {
-      try { return origNewRegion4(skin, name, path); }
+    (atlasLoader as any).newRegionAttachment = (skin: any, name: string, path: string, sequence: any) => {
+      try { return origNewRegion4(skin, name, path, sequence); }
       catch { console.warn(`[SPINE] Missing region: ${path}`); return null; }
     };
     const origNewMesh4 = atlasLoader.newMeshAttachment.bind(atlasLoader);
-    atlasLoader.newMeshAttachment = (skin: any, name: string, path: string) => {
-      try { return origNewMesh4(skin, name, path); }
+    (atlasLoader as any).newMeshAttachment = (skin: any, name: string, path: string, sequence: any) => {
+      try { return origNewMesh4(skin, name, path, sequence); }
       catch { console.warn(`[SPINE] Missing mesh region: ${path}`); return null; }
     };
 
