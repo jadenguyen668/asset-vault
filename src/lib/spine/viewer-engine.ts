@@ -635,6 +635,20 @@ export class SpineViewerEngine {
 
     // Parse JSON
     const atlasLoader = new spine.AtlasAttachmentLoader(atlas);
+
+    // Patch: return null for missing regions instead of throwing
+    // spine-canvas-3.8 SkeletonJson already checks `if (region == null) return null;`
+    const origNewRegion = atlasLoader.newRegionAttachment.bind(atlasLoader);
+    atlasLoader.newRegionAttachment = (skin: any, name: string, path: string) => {
+      try { return origNewRegion(skin, name, path); }
+      catch { console.warn(`[SPINE] Missing region: ${path}`); return null; }
+    };
+    const origNewMesh = atlasLoader.newMeshAttachment.bind(atlasLoader);
+    atlasLoader.newMeshAttachment = (skin: any, name: string, path: string) => {
+      try { return origNewMesh(skin, name, path); }
+      catch { console.warn(`[SPINE] Missing mesh region: ${path}`); return null; }
+    };
+
     const jsonParser = new spine.SkeletonJson(atlasLoader);
     const jsonData = JSON.parse(files.jsonText);
 
@@ -838,6 +852,19 @@ export class SpineViewerEngine {
     }
 
     const atlasLoader = new spine4.AtlasAttachmentLoader(atlas);
+
+    // Patch: return null for missing regions instead of throwing
+    const origNewRegion4 = atlasLoader.newRegionAttachment.bind(atlasLoader);
+    atlasLoader.newRegionAttachment = (skin: any, name: string, path: string) => {
+      try { return origNewRegion4(skin, name, path); }
+      catch { console.warn(`[SPINE] Missing region: ${path}`); return null; }
+    };
+    const origNewMesh4 = atlasLoader.newMeshAttachment.bind(atlasLoader);
+    atlasLoader.newMeshAttachment = (skin: any, name: string, path: string) => {
+      try { return origNewMesh4(skin, name, path); }
+      catch { console.warn(`[SPINE] Missing mesh region: ${path}`); return null; }
+    };
+
     const jsonParser = new spine4.SkeletonJson(atlasLoader);
     const skeletonData = jsonParser.readSkeletonData(jsonData);
 
