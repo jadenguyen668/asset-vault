@@ -4,12 +4,12 @@ import fs from 'fs';
 class DummyAttachmentLoader implements spine.AttachmentLoader {
     newRegionAttachment(skin: spine.Skin, name: string, path: string): spine.RegionAttachment {
         const att = new spine.RegionAttachment(name, path);
-        att.setRegion({} as any);
+        att.region = {} as any;
         return att;
     }
     newMeshAttachment(skin: spine.Skin, name: string, path: string): spine.MeshAttachment {
         const att = new spine.MeshAttachment(name, path);
-        att.setRegion({} as any);
+        att.region = {} as any;
         return att;
     }
     newBoundingBoxAttachment(skin: spine.Skin, name: string): spine.BoundingBoxAttachment {
@@ -29,6 +29,6 @@ class DummyAttachmentLoader implements spine.AttachmentLoader {
 try {
     const jsonText = fs.readFileSync('live_asset/package.json', 'utf-8'); // we will test this later
     console.log("Mock loader ready");
-} catch(e) {
+} catch(e: any) {
     console.log(e.message);
 }
