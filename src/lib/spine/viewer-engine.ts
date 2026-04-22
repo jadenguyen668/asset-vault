@@ -342,6 +342,9 @@ export class SpineViewerEngine {
     skeleton.scaleX = this.state.baseScale * this.state.scale;
     skeleton.scaleY = this.state.baseScale * this.state.scale;
 
+    // Advance skeleton internal time — required for Physics constraints in Spine 4.2+
+    skeleton.update(delta);
+
     if (this.state.playing) {
       animState.update(delta * this.state.speed);
       if (this.state.speed < 0 && this.state.loop) {
