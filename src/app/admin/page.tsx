@@ -11,6 +11,14 @@ export default async function AdminPage() {
   if (profile?.role !== 'admin') redirect('/library');
   const { data: users } = await supabase.from('profiles').select('*').order('created_at');
   return (
-    <div className="flex h-screen flex-col bg-bg"><Header /><div className="flex-1 overflow-y-auto p-8"><AdminPanel users={users || []} /></div></div>
+    <div className="flex h-screen flex-col bg-bg">
+      <Header />
+      <div className="flex-1 overflow-y-auto p-8">
+        <a href="/library" className="mb-4 inline-flex items-center gap-1.5 text-sm text-accent hover:text-accent-light transition-colors">
+          ← Back to Library
+        </a>
+        <AdminPanel users={users || []} />
+      </div>
+    </div>
   );
 }
