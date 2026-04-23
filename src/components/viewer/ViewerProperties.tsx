@@ -273,7 +273,7 @@ export function ViewerProperties({ character, projects = [], collections: initia
                  <input 
                    type="text" 
                    placeholder="+ New Collection" 
-                   className="flex-1 rounded border border-border bg-panel px-2 py-1.5 text-xs outline-none focus:border-accent text-text" 
+                   className="flex-1 min-w-0 rounded border border-border bg-panel px-2 py-1.5 text-xs outline-none focus:border-accent text-text" 
                    value={newCollectionName}
                    onChange={e => setNewCollectionName(e.target.value)}
                    onKeyDown={async (e) => {
@@ -281,38 +281,43 @@ export function ViewerProperties({ character, projects = [], collections: initia
                        const val = newCollectionName.trim();
                        if (!val) return;
                        e.preventDefault();
-                       try {
-                         const supabase = createClient();
-                         const { data, error } = await supabase.from('collections').insert([{ name: val, color: '#7c5cfc' }]).select('*').single();
-                         if (error) { console.error('[Collection] Create error:', error); return; }
-                         if (data) {
-                           setLocalCollections(prev => [...prev, data as Collection]);
-                           setEditCollectionIds(prev => [...prev, data.id]);
-                           setNewCollectionName('');
-                         }
-                       } catch (err) { console.error('[Collection] Create failed:', err); }
+                        try {
+                          const supabase = createClient();
+                          const { data: { user } } = await supabase.auth.getUser();
+                          if (!user) { console.error('[Collection] Not authenticated'); return; }
+                          const { data, error } = await supabase.from('collections').insert([{ name: val, icon: '📁', color: '#7c5cfc', user_id: user.id }]).select('*').single();
+                          if (error) { console.error('[Collection] Create error:', error); return; }
+                          if (data) {
+                            setLocalCollections(prev => [...prev, data as Collection]);
+                            setEditCollectionIds(prev => [...prev, data.id]);
+                            setNewCollectionName('');
+                          }
+                        } catch (err) { console.error('[Collection] Create failed:', err); }
                      }
                    }}
                  />
                  <button
                    type="button"
-                   className="rounded border border-border bg-accent/20 px-2 py-1 text-xs text-accent hover:bg-accent hover:text-white transition-colors"
+                   className="shrink-0 flex items-center justify-center w-8 h-8 rounded border border-border bg-accent/20 text-accent hover:bg-accent hover:text-white transition-colors"
+                   title="Add Collection"
                    onClick={async () => {
                      const val = newCollectionName.trim();
                      if (!val) return;
-                     try {
-                       const supabase = createClient();
-                       const { data, error } = await supabase.from('collections').insert([{ name: val, color: '#7c5cfc' }]).select('*').single();
-                       if (error) { console.error('[Collection] Create error:', error); return; }
-                       if (data) {
-                         setLocalCollections(prev => [...prev, data as Collection]);
-                         setEditCollectionIds(prev => [...prev, data.id]);
-                         setNewCollectionName('');
-                       }
-                     } catch (err) { console.error('[Collection] Create failed:', err); }
+                      try {
+                        const supabase = createClient();
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (!user) { console.error('[Collection] Not authenticated'); return; }
+                        const { data, error } = await supabase.from('collections').insert([{ name: val, icon: '📁', color: '#7c5cfc', user_id: user.id }]).select('*').single();
+                        if (error) { console.error('[Collection] Create error:', error); return; }
+                        if (data) {
+                          setLocalCollections(prev => [...prev, data as Collection]);
+                          setEditCollectionIds(prev => [...prev, data.id]);
+                          setNewCollectionName('');
+                        }
+                      } catch (err) { console.error('[Collection] Create failed:', err); }
                    }}
                  >
-                   <Plus size={12} />
+                   <Plus size={14} />
                  </button>
                </div>
              </>
