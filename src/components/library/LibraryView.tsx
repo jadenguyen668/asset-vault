@@ -396,40 +396,15 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         };
         const charId = await saveCharacter(charData);
 
-        // Try R2 upload, if it fails, store PNGs as base64 data URLs in DB
-        let uploadOk = false;
+        // Try R2 upload (optional — if fails, file still works from json_text in DB)
         try {
            const jsonBlob = new Blob([item.spineSet.spineFiles.jsonText]);
            const atlasBlob = new Blob([item.spineSet.spineFiles.atlasText]);
            const pngs = Array.from(item.spineSet.spineFiles.pngBlobs.entries()).map(([n, b]) => ({ name: n, blob: b }));
            const paths = await uploadSpineFiles(charId, jsonBlob, atlasBlob, pngs, item.spineSet.spineFiles.jsonName);
            await supabase.from('characters').update({ json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths }).eq('id', charId);
-           uploadOk = true;
         } catch(e) {
-           console.warn('R2 upload failed, storing PNGs as base64 in DB', e);
-        }
-
-        // Fallback: embed PNGs as base64 data URLs into png_paths
-        if (!uploadOk) {
-          try {
-            const base64Paths: string[] = [];
-            for (const [filename, blob] of item.spineSet.spineFiles.pngBlobs) {
-              const arrayBuf = await blob.arrayBuffer();
-              const bytes = new Uint8Array(arrayBuf);
-              // Chunked base64 encoding (avoid stack overflow with large PNGs)
-              let binary = '';
-              const chunkSize = 8192;
-              for (let i = 0; i < bytes.length; i += chunkSize) {
-                const chunk = bytes.subarray(i, i + chunkSize);
-                binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-              }
-              const base64 = btoa(binary);
-              base64Paths.push(`data:image/png;name=${filename};base64,${base64}`);
-            }
-            await supabase.from('characters').update({ png_paths: base64Paths }).eq('id', charId);
-          } catch (e2) {
-            console.warn('Base64 PNG storage also failed', e2);
-          }
+           console.warn('R2 upload failed, continuing without cloud storage', e);
         }
       }
       router.refresh();
