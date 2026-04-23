@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import type { Character, Project, Collection, AssetStatus } from '@/types/database';
-import { Box, Calendar, FileText, Tag, Bone, Layers, Film, HardDrive, Edit2, Save, X, FolderOpen, Plus, LockKeyhole } from 'lucide-react';
+import { Box, Calendar, FileText, Layers, Edit2, Save, X, FolderOpen, Plus, LockKeyhole, HardDrive } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { createClient } from '@/lib/supabase/client';
 
@@ -132,22 +132,8 @@ export function ViewerProperties({ character, projects = [], collections: initia
   const rows: { label: string; value: string; icon: React.ReactNode }[] = [
     { label: 'File', value: character.json_name, icon: <FileText size={12} /> },
     { label: 'Type', value: character.asset_type.toUpperCase(), icon: <Layers size={12} /> },
-  ];
-
-  if (character.asset_type === 'spine') {
-    rows.push(
-      { label: 'Version', value: `Spine ${character.spine_version}`, icon: <Tag size={12} /> },
-      { label: 'Bones', value: String(character.bone_count), icon: <Bone size={12} /> },
-      { label: 'Slots', value: String(character.slot_count), icon: <Layers size={12} /> },
-      { label: 'Anims', value: String(character.anim_count), icon: <Film size={12} /> },
-      { label: 'Skins', value: String(character.skin_count), icon: <Layers size={12} /> },
-    );
-  }
-
-  rows.push(
-    { label: 'Size', value: formatSize(character.file_size), icon: <HardDrive size={12} /> },
     { label: 'Imported', value: formatDate(character.imported_at), icon: <Calendar size={12} /> },
-  );
+  ];
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -437,27 +423,9 @@ export function ViewerProperties({ character, projects = [], collections: initia
             <p className="mt-1 rounded bg-white/3 p-2 text-xs text-dim italic">{character.notes}</p>
           )}
         </div>
-
-        {/* Animations list */}
-        {!isEditing && character.anim_names && character.anim_names.length > 0 && (
-          <div className="mt-2">
-            <span className="text-[10px] uppercase tracking-wider text-dim font-mono">Animations</span>
-            <div className="mt-1 max-h-24 overflow-y-auto rounded bg-white/3 p-2">
-              {character.anim_names.map((a) => (
-                <div key={a} className="text-[10px] font-mono text-dim py-0.5">{a}</div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
 function formatDate(iso: string): string {
