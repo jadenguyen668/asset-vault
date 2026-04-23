@@ -273,13 +273,32 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
           <div className="w-[340px] flex flex-col bg-panel-secondary overflow-y-auto">
             <div className="p-4 flex flex-col gap-5">
               
-              {/* Naming Builder */}
+              {/* Naming Builder & Project */}
               <div>
                 <div className="text-xs font-bold uppercase tracking-widest text-dim mb-3">Naming Builder</div>
                 <div className="rounded border border-border bg-bg p-3 shadow-inner">
                   <div className="text-center font-mono text-[13px] font-bold text-accent mb-4 break-all">{previewName}</div>
                   
                   <div className="space-y-3">
+                    <div>
+                      <div className="text-[10px] text-dim mb-1">Project</div>
+                      <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} className="w-full rounded border border-border bg-panel px-3 py-2 text-xs text-text outline-none">
+                        <option value="">— No Project —</option>
+                        {projects.map(p => <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>)}
+                        <option value="__new__">➕ New Project...</option>
+                      </select>
+                      {selectedProjectId === '__new__' && (
+                        <div className="rounded border border-border bg-panel p-2 mt-2 flex flex-col gap-2">
+                           <div className="flex gap-2">
+                             <input type="text" placeholder="CODE" className="w-1/3 uppercase rounded border border-border bg-bg px-2 py-1.5 text-xs outline-none" value={newProjectCode} onChange={e => setNewProjectCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6))} />
+                             <input type="text" placeholder="Project Name" className="flex-1 rounded border border-border bg-bg px-2 py-1.5 text-xs outline-none" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} />
+                           </div>
+                           <div className="flex flex-wrap gap-1 mt-1">
+                              {PROJECT_COLORS.map(c => <button key={c} onClick={() => setSelectedColor(c)} className={`h-5 w-5 rounded-full border-2 ${c === selectedColor ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: c }} />)}
+                           </div>
+                        </div>
+                      )}
+                    </div>
                     <div>
                       <div className="text-[10px] text-dim mb-1">Category</div>
                       <div className="flex flex-wrap gap-1">
@@ -307,27 +326,6 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
                     </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Project Map */}
-              <div>
-                 <div className="text-xs font-bold uppercase tracking-widest text-dim mb-2">Project</div>
-                 <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} className="w-full rounded border border-border bg-panel px-3 py-2 text-sm text-text outline-none mb-2">
-                   <option value="">— No Project —</option>
-                   {projects.map(p => <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>)}
-                   <option value="__new__">➕ New Project...</option>
-                 </select>
-                 {selectedProjectId === '__new__' && (
-                    <div className="rounded border border-border bg-bg p-3 mt-2 flex flex-col gap-2">
-                       <div className="flex gap-2">
-                         <input type="text" placeholder="CODE" className="w-1/3 uppercase rounded border border-border bg-panel px-2 py-1.5 text-xs outline-none" value={newProjectCode} onChange={e => setNewProjectCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6))} />
-                         <input type="text" placeholder="Project Name" className="flex-1 rounded border border-border bg-panel px-2 py-1.5 text-xs outline-none" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} />
-                       </div>
-                       <div className="flex flex-wrap gap-1 mt-1">
-                          {PROJECT_COLORS.map(c => <button key={c} onClick={() => setSelectedColor(c)} className={`h-5 w-5 rounded-full border-2 ${c === selectedColor ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: c }} />)}
-                       </div>
-                    </div>
-                 )}
               </div>
 
               {/* Collections Map */}
