@@ -17,6 +17,13 @@ export async function createCollection(name: string, icon?: string, color?: stri
 }
 
 export async function deleteCollection(id: number): Promise<void> {
-  const supabase = createClient();
-  await supabase.from('collections').delete().eq('id', id);
+  const res = await fetch('/api/admin/delete-collection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Delete collection failed (${res.status})`);
+  }
 }

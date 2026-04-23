@@ -42,14 +42,26 @@ export function ViewerControls({ viewerRef, animations, skins, bones = [], compa
   useEffect(() => {
     if (initialAnimation && animations.includes(initialAnimation)) {
       setCurrentAnim(initialAnimation);
-    } else if (animations.length > 0 && !currentAnim) {
+    } else if (animations.length > 0 && !animations.includes(currentAnim)) {
       setCurrentAnim(animations[0]);
+    } else if (animations.length === 0) {
+      setCurrentAnim('');
     }
   }, [animations, initialAnimation, currentAnim]);
 
   useEffect(() => {
-    if (skins.length > 0 && !currentSkin) setCurrentSkin(skins[0]);
+    if (skins.length > 0 && !skins.includes(currentSkin)) {
+      setCurrentSkin(skins[0]);
+    } else if (skins.length === 0) {
+      setCurrentSkin('');
+    }
   }, [skins, currentSkin]);
+
+  useEffect(() => {
+    if (trackedBone && !bones.includes(trackedBone)) {
+      setTrackedBone('');
+    }
+  }, [bones, trackedBone]);
 
   const handleAnimChange = useCallback((name: string) => {
     setCurrentAnim(name);

@@ -15,3 +15,15 @@ export async function createProject(name: string, code: string, color?: string):
   if (error) throw error;
   return data.id;
 }
+
+export async function deleteProject(id: number): Promise<void> {
+  const res = await fetch('/api/admin/delete-project', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Delete project failed (${res.status})`);
+  }
+}

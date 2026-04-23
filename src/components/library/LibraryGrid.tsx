@@ -1,20 +1,42 @@
 'use client';
 import { LibraryCard } from './LibraryCard';
 import { useAppStore } from '@/stores/appStore';
-import type { Character } from '@/types/database';
+import type { Character, Collection } from '@/types/database';
 import { PackageOpen } from 'lucide-react';
 
 interface Props {
   characters: Character[];
+  collections?: Collection[];
   onCardClick?: (character: Character) => void;
   onDelete?: (character: Character) => void;
   selectedId?: number;
 }
 
-export function LibraryGrid({ characters, onCardClick, onDelete, selectedId }: Props) {
+export function LibraryGrid({ characters, collections, onCardClick, onDelete, selectedId }: Props) {
   const { searchQuery, filterProjectId, filterCollectionId, filterType, sortBy } = useAppStore();
   let filtered = characters;
-  if (searchQuery) { const q = searchQuery.toLowerCase(); filtered = filtered.filter((c) => c.name.toLowerCase().includes(q) || c.json_name.toLowerCase().includes(q)); }
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    // Build a map of collection id -> name for search
+    const collectionNameMap = new Map<number, string>();
+    if (collections) {
+      for (const col of collections) {
+        collectionNameMap.set(col.id, col.name.toLowerCase());
+      }
+    }
+    filtered = filtered.filter((c) => {
+      // Match by name or json_name
+      if (c.name.toLowerCase().includes(q)) return true;
+      if (c.json_name.toLowerCase().includes(q)) return true;
+      // Match by tags
+      if (c.tags?.some(t => t.toLowerCase().includes(q))) return true;
+      // Match by notes
+      if (c.notes?.toLowerCase().includes(q)) return true;
+      // Match by collection name
+      if (c.collection_ids?.some(id => collectionNameMap.get(id)?.includes(q))) return true;
+      return false;
+    });
+  }
   if (filterType === 'project' && filterProjectId) filtered = filtered.filter((c) => c.project_id === filterProjectId);
   if (filterType === 'collection' && filterCollectionId) filtered = filtered.filter((c) => c.collection_ids?.includes(filterCollectionId));
 

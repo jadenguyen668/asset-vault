@@ -167,12 +167,21 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
   // Handle card click -> load character in preview (fetch PNGs from R2)
   const handleCardClick = useCallback(async (char: Character) => {
+    // Reset playback config to defaults IMMEDIATELY before any async work
+    // so ViewerControls reads 1.0 when it remounts due to key change
+    globalPlaybackConfigRef.current.speed = 1;
+    globalPlaybackConfigRef.current.scale = 1;
+    globalPlaybackConfigRef.current.playing = true;
+    globalPlaybackConfigRef.current.looping = true;
+    globalPlaybackConfigRef.current.reversing = false;
+
     setSelectedChar(char);
     setPreviewCollapsed(false);
     setLoadingChar(true);
     setPreviewError(null);
     // Use anim_names from DB immediately so Grid Mode has correct data
     setAnimations(char.anim_names || []);
+    setTargetAnimation(null);
     setSkins([]);
     setBones([]);
 
@@ -231,14 +240,6 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         jsonName: char.json_name,
       });
 
-      // Reset playback config to defaults, then apply saved config
-      const parsedConfig = typeof char.preview_config === 'object' && char.preview_config ? (char.preview_config as any) : {};
-      globalPlaybackConfigRef.current.speed = parsedConfig.speed ?? 1;
-      globalPlaybackConfigRef.current.scale = parsedConfig.scale ?? 1;
-      globalPlaybackConfigRef.current.playing = true;
-      globalPlaybackConfigRef.current.looping = true;
-      globalPlaybackConfigRef.current.reversing = false;
-
       setPreviewMajor(char.major_version);
       setPreviewMinor(char.minor_version);
       setPreviewName(char.name);
@@ -259,6 +260,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setPreviewName(first.name);
     setPreviewError(null);
     setSelectedChar(null);
+    setTargetAnimation(null);
   }, []);
 
   const [skelInfo, setSkelInfo] = useState<{ bones: number; slots: number; anims: number; skins: number } | null>(null);
@@ -557,7 +559,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
               )}
             </div>
             <div className="flex-1 overflow-y-auto">
-              <LibraryGrid characters={initialCharacters} onCardClick={handleCardClick} onDelete={handleDeleteChar} selectedId={selectedChar?.id} />
+              <LibraryGrid characters={initialCharacters} collections={initialCollections} onCardClick={handleCardClick} onDelete={handleDeleteChar} selectedId={selectedChar?.id} />
             </div>
           </div>
         </div>
@@ -710,7 +712,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         {previewMaximized ? (
           (animations.length > 0 || skins.length > 0) && (
             <div className="flex shrink-0 items-center gap-3 px-3 py-2 border-t border-border" style={{ background: 'var(--panel)' }}>
-              <ViewerControls viewerRef={viewerRef} animations={animations} skins={skins} bones={bones} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} disableCharacterControls={viewMode === 'grid' || !hasPreview} playbackConfigRef={globalPlaybackConfigRef} />
+              <ViewerControls key={selectedChar?.id ?? previewName ?? 'default'} viewerRef={viewerRef} animations={animations} skins={skins} bones={bones} compact initialAnimation={targetAnimation || undefined} globalBgImage={globalBgImage} onBgImageChange={handleBgImageChange} disableCharacterControls={viewMode === 'grid' || !hasPreview} playbackConfigRef={globalPlaybackConfigRef} />
             </div>
           )
         ) : (
@@ -718,6 +720,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
             {/* Left: Controls */}
             <div className="flex flex-col gap-2 overflow-y-auto border-r border-border p-2.5" style={{ flex: 1, background: 'var(--panel)', minWidth: 0 }}>
               <ViewerControls 
+                key={selectedChar?.id ?? previewName ?? 'default'}
                 viewerRef={viewerRef} 
                 animations={animations} 
                 skins={skins} 

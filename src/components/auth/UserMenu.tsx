@@ -21,6 +21,14 @@ export function UserMenu() {
   if (!profile) return null;
   const initial = (profile.display_name || profile.email)[0].toUpperCase();
 
+  const handleSignOut = async () => {
+    try { localStorage.removeItem('spine_library_profile'); } catch {}
+    await supabase.auth.signOut();
+    document.cookie = 'admin_session=; path=/; max-age=0';
+    router.push('/login');
+    router.refresh();
+  };
+
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen(!open)} className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-bold text-white">{initial}</button>
@@ -34,7 +42,7 @@ export function UserMenu() {
           <div className="p-1">
             <button onClick={() => { router.push('/settings'); setOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs text-text hover:bg-accent/10"><Settings className="h-3.5 w-3.5" /> Settings</button>
             {profile.role === 'admin' && <button onClick={() => { router.push('/admin'); setOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs text-text hover:bg-accent/10"><Shield className="h-3.5 w-3.5" /> Admin Panel</button>}
-            <button onClick={async () => { await supabase.auth.signOut(); router.push('/login'); router.refresh(); }} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs text-red hover:bg-red/10"><LogOut className="h-3.5 w-3.5" /> Sign Out</button>
+            <button onClick={handleSignOut} className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs text-red hover:bg-red/10"><LogOut className="h-3.5 w-3.5" /> Sign Out</button>
           </div>
         </div>
       )}
