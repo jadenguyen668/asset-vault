@@ -28,6 +28,11 @@ export function LibraryGrid({ characters, collections, onCardClick, onDelete, se
       // Match by name or json_name
       if (c.name.toLowerCase().includes(q)) return true;
       if (c.json_name.toLowerCase().includes(q)) return true;
+      // Match by status (e.g. "draft", "in review", "in-review")
+      if (c.status?.toLowerCase().replace(/-/g, ' ').includes(q)) return true;
+      if (c.status?.toLowerCase().includes(q.replace(/\s+/g, '-'))) return true;
+      // Match by spine version (e.g. "3.7", "4.2")
+      if (c.spine_version?.toLowerCase().includes(q)) return true;
       // Match by tags
       if (c.tags?.some(t => t.toLowerCase().includes(q))) return true;
       // Match by notes

@@ -34,6 +34,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const router = useRouter();
   const [activeSets, setActiveSets] = useState<ParsedSpineSet[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [localCharacters, setLocalCharacters] = useState<Character[]>(initialCharacters);
+  useEffect(() => { setLocalCharacters(initialCharacters); }, [initialCharacters]);
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
   const [pendingDeleteChar, setPendingDeleteChar] = useState<Character | null>(null);
   const [previewFiles, setPreviewFiles] = useState<SpineFiles | null>(null);
@@ -396,7 +398,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         };
         const charId = await saveCharacter(charData);
 
-        // Try R2 upload (optional — if fails, file still works from json_text in DB)
+        // Try R2 upload, fallback to base64 if it fails
         try {
            const jsonBlob = new Blob([item.spineSet.spineFiles.jsonText]);
            const atlasBlob = new Blob([item.spineSet.spineFiles.atlasText]);
@@ -404,7 +406,28 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
            const paths = await uploadSpineFiles(charId, jsonBlob, atlasBlob, pngs, item.spineSet.spineFiles.jsonName);
            await supabase.from('characters').update({ json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths }).eq('id', charId);
         } catch(e) {
-           console.warn('R2 upload failed, continuing without cloud storage', e);
+           console.warn('R2 upload failed, falling back to base64 DB storage', e);
+           const base64Paths: string[] = [];
+           const getBase64 = (blob: Blob) => new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(blob);
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = error => reject(error);
+           });
+           
+           for (const [filename, blob] of item.spineSet.spineFiles.pngBlobs) {
+               try {
+                  const dataUrl = await getBase64(blob);
+                  // Ensure correct format: `data:image/png;name=file.png;base64,...`
+                  const formatted = dataUrl.replace(/^data:image\/[^;]+;base64,/, `data:image/png;name=${filename};base64,`);
+                  base64Paths.push(formatted);
+               } catch (err) {
+                  console.error('Failed to convert PNG to base64', err);
+               }
+           }
+           if (base64Paths.length > 0) {
+              await supabase.from('characters').update({ png_paths: base64Paths }).eq('id', charId);
+           }
         }
       }
       router.refresh();
@@ -470,6 +493,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         return;
       }
       setSelectedChar({ ...selectedChar, ...dbUpdates } as Character);
+      // Update local list immediately for search/filter
+      setLocalCharacters(prev => prev.map(c => c.id === selectedChar.id ? { ...c, ...dbUpdates } : c));
       router.refresh();
     } catch(e) {
       console.error('Update failed', e);
@@ -534,7 +559,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
               )}
             </div>
             <div className="flex-1 overflow-y-auto">
-              <LibraryGrid characters={initialCharacters} collections={initialCollections} onCardClick={handleCardClick} onDelete={handleDeleteChar} selectedId={selectedChar?.id} />
+              <LibraryGrid characters={localCharacters} collections={initialCollections} onCardClick={handleCardClick} onDelete={handleDeleteChar} selectedId={selectedChar?.id} />
             </div>
           </div>
         </div>
@@ -712,7 +737,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
             </div>
             {/* Right: Properties */}
             <div className="flex flex-col overflow-hidden" style={{ flex: 1, background: 'var(--panel-secondary)', minWidth: 0 }}>
-              <ViewerProperties character={selectedChar} projects={initialProjects} collections={initialCollections} onUpdate={handleUpdateChar} />
+              <ViewerProperties character={selectedChar} projects={initialProjects} collections={initialCollections} allTags={[...new Set(localCharacters.flatMap(c => c.tags || []))].sort()} onUpdate={handleUpdateChar} />
             </div>
           </div>
         )}

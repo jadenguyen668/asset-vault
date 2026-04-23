@@ -9,6 +9,7 @@ interface Props {
   character: Character | null;
   projects?: Project[];
   collections?: Collection[];
+  allTags?: string[];
   onUpdate?: (updates: Partial<Character>, newProj?: { code: string; name: string; color: string }) => void;
 }
 
@@ -16,7 +17,7 @@ const NAMING_CATEGORIES = ['VFX', 'UI', 'ANM', 'CHR', 'OBJ', 'PRT', 'BG'];
 const NAMING_LOCATIONS = ['LOB', 'ING', 'CMN', 'PL', 'EN'];
 const PROJECT_COLORS = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#f43f5e'];
 
-export function ViewerProperties({ character, projects = [], collections: initialCollections = [], onUpdate }: Props) {
+export function ViewerProperties({ character, projects = [], collections: initialCollections = [], allTags = [], onUpdate }: Props) {
   const { profile, isAdmin } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   
@@ -392,21 +393,63 @@ export function ViewerProperties({ character, projects = [], collections: initia
         {/* Tags */}
         <div className="mt-2">
           <span className="text-[10px] uppercase tracking-wider text-dim font-mono">Tags</span>
-          {isEditing ? (
-            <input 
-              type="text" 
-              value={editTags} 
-              onChange={e => setEditTags(e.target.value)} 
-              className="mt-1 w-full rounded border border-border bg-bg px-2 py-1.5 text-xs text-text outline-none focus:border-accent" 
-              placeholder="Comma separated tags..." 
-            />
-          ) : character.tags && character.tags.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {character.tags.map((t) => (
-                <span key={t} className="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent-light">{t}</span>
-              ))}
-            </div>
-          )}
+          <div className="mt-1 flex flex-wrap gap-1 items-center">
+            {(isEditing ? editTags.split(',').map(t => t.trim()).filter(Boolean) : (character.tags || [])).map((t) => (
+              <span key={t} className="group rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent-light flex items-center gap-1">
+                {t}
+                {isEditing && (
+                  <button 
+                    onClick={() => {
+                      const newTags = editTags.split(',').map(x => x.trim()).filter(x => x && x !== t).join(', ');
+                      setEditTags(newTags);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-accent-light/50 hover:text-red-400 transition-opacity"
+                  >
+                    <X size={10} />
+                  </button>
+                )}
+              </span>
+            ))}
+            {isEditing && (
+              <input
+                type="text"
+                className="bg-transparent border-none outline-none text-[10px] text-text w-20 placeholder:text-dim/50"
+                placeholder="+ Add tag"
+                onKeyDown={(e) => {
+                  const val = (e.target as HTMLInputElement).value.trim();
+                  if ((e.key === 'Enter' || e.key === ',') && val) {
+                    e.preventDefault();
+                    const existing = editTags.split(',').map(x => x.trim()).filter(Boolean);
+                    if (!existing.includes(val)) {
+                      setEditTags([...existing, val].join(', '));
+                    }
+                    (e.target as HTMLInputElement).value = '';
+                  }
+                }}
+              />
+            )}
+          </div>
+          {/* Tag suggestions */}
+          {isEditing && allTags.length > 0 && (() => {
+            const currentTags = editTags.split(',').map(x => x.trim()).filter(Boolean);
+            const suggestions = allTags.filter(t => !currentTags.includes(t));
+            if (suggestions.length === 0) return null;
+            return (
+              <div className="mt-1.5">
+                <span className="text-[9px] text-dim/60">Chọn nhanh:</span>
+                <div className="mt-0.5 flex flex-wrap gap-1">
+                  {suggestions.map(t => (
+                    <button key={t} onClick={() => {
+                      const existing = editTags.split(',').map(x => x.trim()).filter(Boolean);
+                      setEditTags([...existing, t].join(', '));
+                    }} className="rounded border border-border bg-white/5 px-1.5 py-0.5 text-[9px] text-dim hover:bg-accent/20 hover:text-accent-light hover:border-accent/30 transition-all">
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Notes */}

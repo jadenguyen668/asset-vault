@@ -243,10 +243,10 @@ export class SpineViewerEngine {
       
       ctx2d.lineWidth = 1 / vz;
       // X Axis (Red)
-      ctx2d.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+      ctx2d.strokeStyle = 'rgba(255, 0, 0, 0.35)';
       ctx2d.beginPath(); ctx2d.moveTo(originX - ext, originY); ctx2d.lineTo(originX + ext, originY); ctx2d.stroke();
       // Y Axis (Green)
-      ctx2d.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+      ctx2d.strokeStyle = 'rgba(0, 180, 0, 0.35)';
       ctx2d.beginPath(); ctx2d.moveTo(originX, originY - ext); ctx2d.lineTo(originX, originY + ext); ctx2d.stroke();
     }
 
@@ -367,12 +367,6 @@ export class SpineViewerEngine {
     this.state.renderer.camera.viewportHeight = h / vz;
     this.state.renderer.camera.update();
 
-    const batcher = (this.state.renderer as any).batcher;
-    if (batcher) {
-      batcher.srcColorBlend = gl.SRC_ALPHA;
-      batcher.srcAlphaBlend = gl.ONE;
-      batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
-    }
 
     this.state.renderer.begin();
 
@@ -407,12 +401,12 @@ export class SpineViewerEngine {
       if (!this.crosshairGlTexture && spine4) {
         const pc = document.createElement('canvas'); pc.width = 1; pc.height = 1;
         const pctx = pc.getContext('2d')!;
-        pctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; pctx.fillRect(0, 0, 1, 1);
+        pctx.fillStyle = 'rgba(255, 0, 0, 0.35)'; pctx.fillRect(0, 0, 1, 1);
         this.crosshairGlTexture = new spine4.GLTexture(gl, pc as any);
 
         const pcY = document.createElement('canvas'); pcY.width = 1; pcY.height = 1;
         const pctxY = pcY.getContext('2d')!;
-        pctxY.fillStyle = 'rgba(0, 255, 0, 0.5)'; pctxY.fillRect(0, 0, 1, 1);
+        pctxY.fillStyle = 'rgba(0, 180, 0, 0.35)'; pctxY.fillRect(0, 0, 1, 1);
         (this as any).crosshairGlTextureY = new spine4.GLTexture(gl, pcY as any);
       }
     }
@@ -450,7 +444,7 @@ export class SpineViewerEngine {
     }
     this.state.renderer.end();
 
-    if (batcher) { batcher.srcColorBlend = gl.SRC_ALPHA; batcher.srcAlphaBlend = gl.ONE; batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA; }
+
     
     const track = animState.getCurrent(0);
     const originalAlpha = skeleton.color.a;
@@ -508,11 +502,8 @@ export class SpineViewerEngine {
           if (!this.shapeRenderer) {
             this.shapeRenderer = new spine4.ShapeRenderer(gl);
           }
-          if (batcher) {
-            batcher.srcColorBlend = gl.SRC_ALPHA;
-            batcher.srcAlphaBlend = gl.ONE;
-            batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
-          }
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
           this.shapeRenderer.begin(this.state.renderer.camera);
           this.shapeRenderer.setColor(0, 0.94, 1, 1); // #00f0ff (Cyan)
           for (let i = 1; i < this.trailPoints.length; i++) {
@@ -526,7 +517,7 @@ export class SpineViewerEngine {
       }
     }
 
-    if (batcher) { batcher.srcColorBlend = gl.SRC_ALPHA; batcher.srcAlphaBlend = gl.ONE; batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA; }
+
   }
 
   // ── Load Spine ────────────────────────────────────────────────
@@ -629,7 +620,7 @@ export class SpineViewerEngine {
         }
       }
       if (!img) img = images.values().next().value;
-      if (!img) return null;
+      if (!img) throw new Error(`Missing PNG texture for atlas: ${path}`);
       return { getImage: () => img, setFilters: () => {}, setWraps: () => {} };
     });
 
