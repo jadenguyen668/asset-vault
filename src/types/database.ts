@@ -48,6 +48,11 @@ export interface Character {
   imported_at: string;
   last_viewed_at: string;
   created_at: string;
+  profiles?: {
+    id: string;
+    email: string;
+    display_name: string | null;
+  } | null;
 }
 
 export interface Project {

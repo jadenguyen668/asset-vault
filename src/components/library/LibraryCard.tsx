@@ -68,14 +68,13 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
         >
           {character.name}
         </span>
-        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px] text-dim" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-dim" style={{ fontVariantNumeric: 'tabular-nums' }}>
           {character.asset_type === 'spine' && (
-            <span className="rounded-sm bg-accent/15 px-1 py-px text-accent font-semibold">v{character.spine_version}</span>
+            <span className="rounded-sm bg-accent/15 px-1 py-px text-accent font-semibold mr-1">v{character.spine_version}</span>
           )}
-          {character.asset_type === 'spine' && (
-            <span>{character.anim_count} anims</span>
-          )}
-          <span>{(character.file_size / 1024).toFixed(0)}KB</span>
+          <span className="truncate flex-1" title={character.profiles?.display_name || character.profiles?.email || 'Unknown'}>
+            {character.profiles?.display_name || character.profiles?.email?.split('@')[0] || 'Unknown User'}
+          </span>
         </div>
       </div>
     </div>
