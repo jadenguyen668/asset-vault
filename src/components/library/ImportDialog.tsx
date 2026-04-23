@@ -12,6 +12,7 @@ export interface ImportDialogItem {
   name: string;
   originalName: string;
   isDuplicate: boolean;
+  isIdentical: boolean;
   existingChar?: Character;
   selected: boolean;
   fileSize: number;
@@ -114,16 +115,22 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
         if (!isMounted) return;
 
         const newItems: ImportDialogItem[] = sets.map(set => {
-          const isDup = dupes.has(set.spineFiles.jsonName);
+          const existingChar = dupes.get(set.spineFiles.jsonName);
+          const isDup = !!existingChar;
           let fileSize = new Blob([set.spineFiles.jsonText]).size + new Blob([set.spineFiles.atlasText]).size;
           for (const [, blob] of set.spineFiles.pngBlobs) fileSize += blob.size;
+          // Check if truly identical: same file_size AND same anim_count
+          const isIdentical = isDup && existingChar 
+            ? (existingChar.file_size === fileSize && existingChar.anim_count === set.animCount)
+            : false;
           return {
             spineSet: set,
             name: set.name,
             originalName: set.name,
             isDuplicate: isDup,
-            existingChar: dupes.get(set.spineFiles.jsonName),
-            selected: !isDup,
+            isIdentical,
+            existingChar,
+            selected: !isIdentical,
             fileSize,
           };
         });
@@ -177,7 +184,7 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
   };
 
   const handleImport = () => {
-    const selectedItems = items.filter(i => i.selected);
+    const selectedItems = items.filter(i => i.selected && !i.isIdentical);
     if (!selectedItems.length) return;
     const res: ImportResult = {
       selectedItems,
@@ -209,7 +216,8 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
             <h2 className="text-lg font-bold text-text">Save to Library</h2>
             <div className="flex gap-2 text-xs mt-1">
               <span className="rounded bg-accent/20 px-2 py-0.5 text-accent font-semibold">{items.filter(i => !i.isDuplicate).length} new</span>
-              {items.filter(i => i.isDuplicate).length > 0 && <span className="rounded bg-red-500/20 px-2 py-0.5 text-red-400 font-semibold">{items.filter(i => i.isDuplicate).length} already exist</span>}
+              {items.filter(i => i.isDuplicate && !i.isIdentical).length > 0 && <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-yellow-400 font-semibold">{items.filter(i => i.isDuplicate && !i.isIdentical).length} update</span>}
+              {items.filter(i => i.isIdentical).length > 0 && <span className="rounded bg-gray-500/20 px-2 py-0.5 text-gray-400 font-semibold">{items.filter(i => i.isIdentical).length} identical</span>}
             </div>
           </div>
           <button onClick={onCancel} className="rounded p-2 text-dim hover:bg-white/10 hover:text-white"><X size={20} /></button>
@@ -221,19 +229,20 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
           <div className="flex flex-col flex-1 border-r border-border min-w-0">
             <div className="flex items-center justify-between p-3 border-b border-border bg-panel-secondary">
               <label className="flex items-center gap-2 text-sm text-dim cursor-pointer">
-                <input type="checkbox" checked={items.every(i => i.selected)} 
-                  onChange={e => { const v = e.target.checked; setItems(prev => prev.map(p => ({ ...p, selected: v }))); }} />
+                <input type="checkbox" checked={items.filter(i => !i.isIdentical).every(i => i.selected)} 
+                  onChange={e => { const v = e.target.checked; setItems(prev => prev.map(p => p.isIdentical ? p : { ...p, selected: v })); }} />
                 Select All
               </label>
               <div className="text-xs text-dim">{formatSize(totalSize)} total</div>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {items.map((item, idx) => (
-                <div key={idx} className={`mb-2 flex items-center gap-3 rounded-lg border ${item.isDuplicate ? 'border-red-500/30 bg-red-500/5' : 'border-border bg-panel'} p-3 py-2 transistion`}>
-                  <input type="checkbox" checked={item.selected} onChange={e => { const v = e.target.checked; setItems(prev => prev.map((p, i) => i === idx ? { ...p, selected: v } : p)); }} />
+                <div key={idx} className={`mb-2 flex items-center gap-3 rounded-lg border ${item.isIdentical ? 'border-gray-500/30 bg-gray-500/5 opacity-50' : item.isDuplicate ? 'border-yellow-500/30 bg-yellow-500/5' : 'border-border bg-panel'} p-3 py-2 transistion`}>
+                  <input type="checkbox" checked={item.selected} disabled={item.isIdentical} onChange={e => { const v = e.target.checked; setItems(prev => prev.map((p, i) => i === idx ? { ...p, selected: v } : p)); }} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <input type="text" className="bg-transparent text-sm font-semibold text-text outline-none focus:border-accent border-b border-transparent max-w-[200px]" value={item.name}
+                        disabled={item.isIdentical}
                         onChange={e => { const v = e.target.value; setItems(prev => prev.map((p, i) => i === idx ? { ...p, name: v } : p)); }} />
                       {item.name !== item.originalName && <span className="text-[10px] text-dim bg-white/5 px-1 rounded truncate max-w-[100px]" title={item.originalName}>✏️ {item.originalName}</span>}
                     </div>
@@ -243,7 +252,18 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
                       <span>{formatSize(item.fileSize)}</span>
                     </div>
                   </div>
-                  {item.isDuplicate && <span className="rounded bg-red-500/20 px-2 py-0.5 text-[10px] text-red-500 font-bold uppercase tracking-wider">Exists</span>}
+                  {item.isIdentical && (
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className="rounded bg-gray-500/20 px-2 py-0.5 text-[10px] text-gray-400 font-bold uppercase tracking-wider">Identical</span>
+                      <span className="text-[9px] text-gray-500">Đã có trong thư viện</span>
+                    </div>
+                  )}
+                  {item.isDuplicate && !item.isIdentical && (
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-[10px] text-yellow-400 font-bold uppercase tracking-wider">Update</span>
+                      <span className="text-[9px] text-yellow-500">Nội dung thay đổi</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -391,8 +411,8 @@ export function ImportDialog({ sets, projects, collections: initialCollections, 
         {/* Footer */}
         <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border p-4">
            <button onClick={onCancel} className="rounded px-4 py-2 text-sm font-semibold text-dim hover:text-white">Cancel</button>
-           <button onClick={handleImport} disabled={!items.some(i => i.selected)} className="flex items-center gap-2 rounded bg-gradient-to-br from-accent to-[#6d4fde] px-6 py-2 text-sm font-bold text-white shadow hover:scale-105 disabled:opacity-50 disabled:pointer-events-none transition-all">
-              <Save size={16} /> Import {items.filter(i => i.selected).length} Items
+           <button onClick={handleImport} disabled={!items.some(i => i.selected && !i.isIdentical)} className="flex items-center gap-2 rounded bg-gradient-to-br from-accent to-[#6d4fde] px-6 py-2 text-sm font-bold text-white shadow hover:scale-105 disabled:opacity-50 disabled:pointer-events-none transition-all">
+              <Save size={16} /> Import {items.filter(i => i.selected && !i.isIdentical).length} Items
            </button>
         </div>
       </div>
