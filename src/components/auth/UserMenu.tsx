@@ -22,6 +22,13 @@ export function UserMenu() {
     try {
       localStorage.removeItem('spine_library_profile');
       document.cookie = 'admin_session=; path=/; max-age=0';
+      // Clear all Supabase auth cookies
+      document.cookie.split(';').forEach(c => {
+        const name = c.trim().split('=')[0];
+        if (name.startsWith('sb-')) {
+          document.cookie = `${name}=; path=/; max-age=0`;
+        }
+      });
       supabase.auth.signOut().catch(() => {});
     } catch { /* ignore */ }
     window.location.replace('/login');
