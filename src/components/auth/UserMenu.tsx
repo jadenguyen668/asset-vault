@@ -18,10 +18,11 @@ export function UserMenu() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     try { localStorage.removeItem('spine_library_profile'); } catch {}
-    await supabase.auth.signOut();
     document.cookie = 'admin_session=; path=/; max-age=0';
+    // Fire and forget - don't wait for signOut to complete
+    supabase.auth.signOut().catch(() => {});
     window.location.href = '/login';
   };
 
