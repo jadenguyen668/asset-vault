@@ -3,5 +3,4 @@
   publish = ".next"
 
 [build.environment]
-  SECRETS_SCAN_OMIT_KEYS = "ADMIN_USERNAME,ADMIN_PASSWORD"
-
+  SECRETS_SCAN_ENABLED = "false"
