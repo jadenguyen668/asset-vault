@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { LibraryView } from '@/components/library/LibraryView';
 import { Header } from '@/components/layout/Header';
+import type { Character } from '@/types/database';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export default async function LibraryPage() {
   const { data: collections } = await supabase.from('collections').select('*').order('created_at');
 
   // Fetch profiles separately and merge into characters
-  let enrichedCharacters = characters || [];
+  let enrichedCharacters = (characters || []) as unknown as Character[];
   if (enrichedCharacters.length > 0) {
     const userIds = [...new Set(enrichedCharacters.map(c => c.user_id).filter(Boolean))];
     const { data: profiles } = await supabase.from('profiles').select('id, email, display_name').in('id', userIds);

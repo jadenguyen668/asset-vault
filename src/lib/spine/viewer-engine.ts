@@ -368,6 +368,14 @@ export class SpineViewerEngine {
     this.state.renderer.camera.update();
 
 
+    // Reset batcher blend to Normal before BG draw to prevent blend contamination
+    const batcher = (this.state.renderer as any).batcher;
+    if (batcher) {
+      batcher.srcColorBlend = gl.SRC_ALPHA;
+      batcher.srcAlphaBlend = gl.ONE;
+      batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
+    }
+
     this.state.renderer.begin();
 
     // Checkerboard background
@@ -469,6 +477,12 @@ export class SpineViewerEngine {
         
         skeleton.color.a = originalAlpha * (0.05 + 0.1 * (numGhosts - i));
         
+        // Reset batcher before ghost draw
+        if (batcher) {
+          batcher.srcColorBlend = gl.SRC_ALPHA;
+          batcher.srcAlphaBlend = gl.ONE;
+          batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
+        }
         this.state.renderer.begin();
         try { this.state.renderer.drawSkeleton(skeleton, false); } catch(e) {}
         this.state.renderer.end();
@@ -483,11 +497,25 @@ export class SpineViewerEngine {
       } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
     }
 
+    // Reset batcher to Normal blend before skeleton draw
+    if (batcher) {
+      batcher.srcColorBlend = gl.SRC_ALPHA;
+      batcher.srcAlphaBlend = gl.ONE;
+      batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
+    }
+
     this.state.renderer.begin();
     try { this.state.renderer.drawSkeleton(skeleton, false); } catch(e: any) {
       if (!this.renderErrorLogged) { this.renderErrorLogged = true; console.error('[RENDER-ERR]', e); }
     }
     this.state.renderer.end();
+
+    // Force-reset batcher after skeleton draw for next frame
+    if (batcher) {
+      batcher.srcColorBlend = gl.SRC_ALPHA;
+      batcher.srcAlphaBlend = gl.ONE;
+      batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
+    }
 
     // Draw Trail (WebGL)
     if (this.trackedBoneName && spine4) {
@@ -677,7 +705,16 @@ export class SpineViewerEngine {
     if (firstSkin) { skeleton.setSkin(firstSkin); skeleton.setSlotsToSetupPose(); }
     skeleton.updateWorldTransform();
 
-    // Monkey-patch drawTriangle for anti-alias seam fix
+    // FX fix: hide pure-FX "rec" rectangle slots with non-Normal blend (Canvas2D can't render Additive/Screen correctly)
+    // and convert specific transparent glow PNGs to Additive
+    for (let i = 0; i < skeleton.slots.length; i++) {
+      const slot = skeleton.slots[i];
+      const att = slot.getAttachment();
+      // Hide white rectangle FX placeholders that use Additive/Screen
+      if (slot.data.blendMode !== 0 && att?.name === 'rec') slot.color.a = 0;
+      // Transparent glow PNGs need Additive, not Normal — otherwise they overlay with black rect
+      if (slot.data.blendMode === 0 && att?.name === 'frost_spike_big') slot.data.blendMode = 1;
+    }
     const rendererCtx = this.state.ctx2d!;
     const stateRef = this.state;
     this.state.renderer.drawTriangle = function (img: any, x0: number, y0: number, u0: number, v0: number,
