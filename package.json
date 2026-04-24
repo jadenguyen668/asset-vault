@@ -10,7 +10,6 @@
         "lint": "next lint"
     },
     "devDependencies": {
-        "@netlify/plugin-nextjs": "^5.15.9",
         "@tailwindcss/postcss": "^4.2.2",
         "@types/node": "^25.5.2",
         "@types/react": "^19.2.14",
