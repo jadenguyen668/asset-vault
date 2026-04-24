@@ -16,6 +16,8 @@ interface AppState {
   setFilterCollectionId: (id: number | null) => void;
   filterTag: string | null;
   setFilterTag: (t: string | null) => void;
+  filterStatus: string | null;
+  setFilterStatus: (s: string | null) => void;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 }
@@ -35,6 +37,8 @@ export const useAppStore = create<AppState>((set) => ({
   setFilterCollectionId: (filterCollectionId) => set({ filterCollectionId }),
   filterTag: null,
   setFilterTag: (filterTag) => set({ filterTag }),
+  filterStatus: null,
+  setFilterStatus: (filterStatus) => set({ filterStatus }),
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 }));

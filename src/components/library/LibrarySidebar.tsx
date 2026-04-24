@@ -1,16 +1,16 @@
 'use client';
 import { useAppStore } from '@/stores/appStore';
-import { Menu, BookOpen, FolderOpen, Trash2, Tag } from 'lucide-react';
+import { Menu, BookOpen, FolderOpen, Trash2, Tag, Activity } from 'lucide-react';
 import type { Project, Collection } from '@/types/database';
 import { useState } from 'react';
 import { deleteProject } from '@/lib/db/projects';
 import { deleteCollection } from '@/lib/db/collections';
 import { useRouter } from 'next/navigation';
 
-interface Props { projects: Project[]; collections: Collection[]; tags?: string[]; }
+interface Props { projects: Project[]; collections: Collection[]; tags?: string[]; statuses?: string[]; }
 
-export function LibrarySidebar({ projects, collections, tags = [] }: Props) {
-  const { sidebarCollapsed, toggleSidebar, filterType, setFilterType, filterProjectId, setFilterProjectId, filterCollectionId, setFilterCollectionId, filterTag, setFilterTag } = useAppStore();
+export function LibrarySidebar({ projects, collections, tags = [], statuses = [] }: Props) {
+  const { sidebarCollapsed, toggleSidebar, filterType, setFilterType, filterProjectId, setFilterProjectId, filterCollectionId, setFilterCollectionId, filterTag, setFilterTag, filterStatus, setFilterStatus } = useAppStore();
   const router = useRouter();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<Project | null>(null);
   const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null);
@@ -61,7 +61,7 @@ export function LibrarySidebar({ projects, collections, tags = [] }: Props) {
         <span className="flex items-center gap-1.5 text-sm font-bold text-accent"><BookOpen className="h-4 w-4" /> Asset Library</span>
       </div>
       <ul className="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5 min-h-0">
-        <li onClick={() => { setFilterType('all'); setFilterProjectId(null); setFilterCollectionId(null); setFilterTag(null); }}
+        <li onClick={() => { setFilterType('all'); setFilterProjectId(null); setFilterCollectionId(null); setFilterTag(null); setFilterStatus(null); }}
           className={`flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs ${filterType === 'all' ? 'bg-gradient-to-r from-accent to-[#6d4fde] font-semibold text-white' : 'text-text hover:bg-accent/10'}`}>Everything</li>
         <p className="mt-4 mb-1.5 ml-2 font-mono text-[10px] uppercase tracking-wider text-dim opacity-70">Projects</p>
         {projects.map((p) => (
@@ -106,6 +106,20 @@ export function LibrarySidebar({ projects, collections, tags = [] }: Props) {
                 <div className="flex items-center gap-2 overflow-hidden pr-2">
                   <Tag className="h-3 w-3 shrink-0 text-dim" />
                   <span className="truncate">{t}</span>
+                </div>
+              </li>
+            ))}
+          </>
+        )}
+        {statuses.length > 0 && (
+          <>
+            <p className="mt-4 mb-1.5 ml-2 font-mono text-[10px] uppercase tracking-wider text-dim opacity-70">Status</p>
+            {statuses.map((s) => (
+              <li key={s} onClick={() => { setFilterType('status'); setFilterStatus(s); }}
+                className={`group relative flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs ${filterType === 'status' && filterStatus === s ? 'bg-gradient-to-r from-accent to-[#6d4fde] font-semibold text-white' : 'text-text hover:bg-accent/10'}`}>
+                <div className="flex items-center gap-2 overflow-hidden pr-2 capitalize">
+                  <Activity className="h-3 w-3 shrink-0 text-dim" />
+                  <span className="truncate">{s.replace('-', ' ')}</span>
                 </div>
               </li>
             ))}

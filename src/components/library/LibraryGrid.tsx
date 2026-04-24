@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function LibraryGrid({ characters, collections, onCardClick, onDelete, selectedId }: Props) {
-  const { searchQuery, filterProjectId, filterCollectionId, filterType, filterTag, sortBy } = useAppStore();
+  const { searchQuery, filterProjectId, filterCollectionId, filterType, filterTag, filterStatus, sortBy } = useAppStore();
   let filtered = characters;
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
@@ -45,6 +45,7 @@ export function LibraryGrid({ characters, collections, onCardClick, onDelete, se
   if (filterType === 'project' && filterProjectId) filtered = filtered.filter((c) => c.project_id === filterProjectId);
   if (filterType === 'collection' && filterCollectionId) filtered = filtered.filter((c) => c.collection_ids?.includes(filterCollectionId));
   if (filterType === 'tag' && filterTag) filtered = filtered.filter((c) => c.tags?.includes(filterTag));
+  if (filterType === 'status' && filterStatus) filtered = filtered.filter((c) => c.status === filterStatus);
 
   filtered = [...filtered].sort((a, b) => {
     switch (sortBy) {

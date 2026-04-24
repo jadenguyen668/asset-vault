@@ -590,7 +590,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         }}
       >
         <div className="flex flex-1 overflow-hidden">
-          <LibrarySidebar projects={initialProjects} collections={initialCollections} tags={[...new Set(localCharacters.flatMap(c => c.tags || []))].sort()} />
+          <LibrarySidebar 
+            projects={initialProjects} 
+            collections={initialCollections} 
+            tags={[...new Set(localCharacters.flatMap(c => c.tags || []))].sort()} 
+            statuses={[...new Set(localCharacters.map(c => c.status).filter(Boolean))].sort()}
+          />
           <div className="flex flex-1 flex-col">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel">
               <div className="flex-1"><LibrarySearch /></div>
