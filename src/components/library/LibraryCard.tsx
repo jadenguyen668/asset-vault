@@ -30,8 +30,10 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
           <img 
             src={character.thumbnail} 
             alt={character.name} 
-            className="absolute inset-0 h-full w-full object-cover drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]" 
+            className="absolute inset-0 h-full w-full object-cover drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] bg-transparent" 
             draggable={false}
+            loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">

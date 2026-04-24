@@ -1,16 +1,16 @@
 'use client';
 import { useAppStore } from '@/stores/appStore';
-import { Menu, BookOpen, FolderOpen, Trash2 } from 'lucide-react';
+import { Menu, BookOpen, FolderOpen, Trash2, Tag } from 'lucide-react';
 import type { Project, Collection } from '@/types/database';
 import { useState } from 'react';
 import { deleteProject } from '@/lib/db/projects';
 import { deleteCollection } from '@/lib/db/collections';
 import { useRouter } from 'next/navigation';
 
-interface Props { projects: Project[]; collections: Collection[]; }
+interface Props { projects: Project[]; collections: Collection[]; tags?: string[]; }
 
-export function LibrarySidebar({ projects, collections }: Props) {
-  const { sidebarCollapsed, toggleSidebar, filterType, setFilterType, filterProjectId, setFilterProjectId, filterCollectionId, setFilterCollectionId } = useAppStore();
+export function LibrarySidebar({ projects, collections, tags = [] }: Props) {
+  const { sidebarCollapsed, toggleSidebar, filterType, setFilterType, filterProjectId, setFilterProjectId, filterCollectionId, setFilterCollectionId, filterTag, setFilterTag } = useAppStore();
   const router = useRouter();
   const [pendingDeleteProject, setPendingDeleteProject] = useState<Project | null>(null);
   const [pendingDeleteCollection, setPendingDeleteCollection] = useState<Collection | null>(null);
@@ -60,8 +60,8 @@ export function LibrarySidebar({ projects, collections }: Props) {
         <button onClick={toggleSidebar} className="text-text opacity-60 hover:opacity-100" aria-label="Toggle sidebar"><Menu className="h-4.5 w-4.5" /></button>
         <span className="flex items-center gap-1.5 text-sm font-bold text-accent"><BookOpen className="h-4 w-4" /> Asset Library</span>
       </div>
-      <ul className="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5">
-        <li onClick={() => { setFilterType('all'); setFilterProjectId(null); }}
+      <ul className="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5 min-h-0">
+        <li onClick={() => { setFilterType('all'); setFilterProjectId(null); setFilterCollectionId(null); setFilterTag(null); }}
           className={`flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs ${filterType === 'all' ? 'bg-gradient-to-r from-accent to-[#6d4fde] font-semibold text-white' : 'text-text hover:bg-accent/10'}`}>Everything</li>
         <p className="mt-4 mb-1.5 ml-2 font-mono text-[10px] uppercase tracking-wider text-dim opacity-70">Projects</p>
         {projects.map((p) => (
@@ -97,6 +97,20 @@ export function LibrarySidebar({ projects, collections }: Props) {
             </button>
           </li>
         ))}
+        {tags.length > 0 && (
+          <>
+            <p className="mt-4 mb-1.5 ml-2 font-mono text-[10px] uppercase tracking-wider text-dim opacity-70">Tags</p>
+            {tags.map((t) => (
+              <li key={t} onClick={() => { setFilterType('tag'); setFilterTag(t); }}
+                className={`group relative flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-xs ${filterType === 'tag' && filterTag === t ? 'bg-gradient-to-r from-accent to-[#6d4fde] font-semibold text-white' : 'text-text hover:bg-accent/10'}`}>
+                <div className="flex items-center gap-2 overflow-hidden pr-2">
+                  <Tag className="h-3 w-3 shrink-0 text-dim" />
+                  <span className="truncate">{t}</span>
+                </div>
+              </li>
+            ))}
+          </>
+        )}
       </ul>
 
       {/* Delete Project Modal */}

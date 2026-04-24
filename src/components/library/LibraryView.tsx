@@ -188,24 +188,42 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setBones([]);
 
     try {
-      // Get JSON/Atlas text (from DB or R2)
-      let jsonText = char.json_text;
-      let atlasText = char.atlas_text;
+      // Lazy fetch full character details if this is lightweight data (no json_text/atlas_text)
+      let fullChar = char;
+      if (!(char as any)._fullLoaded) {
+         const supabase = createClient();
+         const { data, error } = await supabase.from('characters').select('json_text, atlas_text, png_paths, json_path, atlas_path').eq('id', char.id).single();
+         if (data) {
+            fullChar = { ...char, ...data, _fullLoaded: true } as any;
+            // Update local state so we don't refetch on subsequent clicks
+            setLocalCharacters(prev => prev.map(c => c.id === char.id ? { ...c, ...data, _fullLoaded: true } as any : c));
+            setSelectedChar(fullChar);
+         } else {
+            console.warn('[PREVIEW] Failed to fetch full character data', error);
+            setPreviewError('Failed to load character data from database.');
+            setLoadingChar(false);
+            return;
+         }
+      }
 
-      if (!jsonText && char.json_path) {
-        const blob = await downloadFile(char.json_path);
+      // Get JSON/Atlas text (from DB or R2)
+      let jsonText = fullChar.json_text;
+      let atlasText = fullChar.atlas_text;
+
+      if (!jsonText && fullChar.json_path) {
+        const blob = await downloadFile(fullChar.json_path);
         jsonText = await blob.text();
       }
-      if (!atlasText && char.atlas_path) {
-        const blob = await downloadFile(char.atlas_path);
+      if (!atlasText && fullChar.atlas_path) {
+        const blob = await downloadFile(fullChar.atlas_path);
         atlasText = await blob.text();
       }
 
       // Fetch PNG textures from R2 or base64 data URLs
       const pngBlobs = new Map<string, Blob>();
-      if (char.png_paths && char.png_paths.length > 0) {
+      if (fullChar.png_paths && fullChar.png_paths.length > 0) {
         await Promise.all(
-          char.png_paths.map(async (path) => {
+          fullChar.png_paths.map(async (path) => {
             try {
               if (path.startsWith('data:image/')) {
                 // Base64 data URL: extract filename and decode
@@ -239,16 +257,18 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         jsonText,
         atlasText: atlasText || '',
         pngBlobs,
-        jsonName: char.json_name,
+        jsonName: fullChar.json_name,
       });
 
-      setPreviewMajor(char.major_version);
-      setPreviewMinor(char.minor_version);
-      setPreviewName(char.name);
+      setPreviewMajor(fullChar.major_version);
+      setPreviewMinor(fullChar.minor_version);
+      setPreviewName(fullChar.name);
     } catch (e: any) {
+      console.error('[PREVIEW] Error loading character:', e);
       setPreviewError(e?.message || 'Failed to load character assets');
+    } finally {
+      setLoadingChar(false);
     }
-    setLoadingChar(false);
   }, []);
 
   // Handle drag-drop files -> preview directly
@@ -350,19 +370,31 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const handleConfirmImport = useCallback(async (result: ImportResult) => {
     setLoadingChar(true);
     setShowImportDialog(false);
+    
+    // Safety timeout — force clear loading after 60s
+    const safetyTimer = setTimeout(() => {
+      console.error('[IMPORT] 60s timeout reached! Force clearing loading state.');
+      setLoadingChar(false);
+      setPreviewError('Import timed out after 60 seconds. Check console for details.');
+    }, 60000);
+
     try {
+      console.time('[IMPORT] Total');
       const supabase = createClient();
       let projectId = result.projectId;
       
       // If there's a new project created from ImportDialog, save it first
       if (result.newProject) {
+        console.log('[IMPORT] Creating new project...');
         const { data: projData, error: projErr } = await supabase.from('projects').insert([
           { code: result.newProject.code, name: result.newProject.name, color: result.newProject.color }
         ]).select('id').single();
         if (projData) projectId = projData.id;
+        if (projErr) console.error('[IMPORT] Project create error:', projErr);
       }
 
       for (const item of result.selectedItems) {
+        console.log('[IMPORT] Saving character:', item.name);
         const charData: Omit<Character, 'id' | 'created_at'> = {
           user_id: '',
           name: item.name,
@@ -396,17 +428,24 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           last_viewed_at: new Date().toISOString(),
           thumbnail: pendingThumbnail
         };
+        
+        console.time('[IMPORT] saveCharacter');
         const charId = await saveCharacter(charData);
+        console.timeEnd('[IMPORT] saveCharacter');
+        console.log('[IMPORT] Saved charId:', charId);
 
         // Try R2 upload, fallback to base64 if it fails
         try {
+           console.time('[IMPORT] R2 upload');
            const jsonBlob = new Blob([item.spineSet.spineFiles.jsonText]);
            const atlasBlob = new Blob([item.spineSet.spineFiles.atlasText]);
            const pngs = Array.from(item.spineSet.spineFiles.pngBlobs.entries()).map(([n, b]) => ({ name: n, blob: b }));
            const paths = await uploadSpineFiles(charId, jsonBlob, atlasBlob, pngs, item.spineSet.spineFiles.jsonName);
            await supabase.from('characters').update({ json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths }).eq('id', charId);
+           console.timeEnd('[IMPORT] R2 upload');
         } catch(e) {
-           console.warn('R2 upload failed, falling back to base64 DB storage', e);
+           console.warn('[IMPORT] R2 upload failed, falling back to base64', e);
+           console.time('[IMPORT] base64 fallback');
            const base64Paths: string[] = [];
            const getBase64 = (blob: Blob) => new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
@@ -418,25 +457,28 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
            for (const [filename, blob] of item.spineSet.spineFiles.pngBlobs) {
                try {
                   const dataUrl = await getBase64(blob);
-                  // Ensure correct format: `data:image/png;name=file.png;base64,...`
                   const formatted = dataUrl.replace(/^data:image\/[^;]+;base64,/, `data:image/png;name=${filename};base64,`);
                   base64Paths.push(formatted);
                } catch (err) {
-                  console.error('Failed to convert PNG to base64', err);
+                  console.error('[IMPORT] Failed to convert PNG to base64', err);
                }
            }
            if (base64Paths.length > 0) {
               await supabase.from('characters').update({ png_paths: base64Paths }).eq('id', charId);
            }
+           console.timeEnd('[IMPORT] base64 fallback');
         }
       }
+      console.log('[IMPORT] All done! Refreshing...');
+      console.timeEnd('[IMPORT] Total');
       router.refresh();
-      // Keep preview visible — only clear activeSets to hide "Save to Library" button
       setActiveSets([]);
       setPendingThumbnail(null);
     } catch (err: any) {
+      console.error('[IMPORT] Fatal error:', err);
       setPreviewError(err?.message || 'Import failed');
     } finally {
+      clearTimeout(safetyTimer);
       setLoadingChar(false);
     }
   }, [router, pendingThumbnail]);
@@ -548,7 +590,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         }}
       >
         <div className="flex flex-1 overflow-hidden">
-          <LibrarySidebar projects={initialProjects} collections={initialCollections} />
+          <LibrarySidebar projects={initialProjects} collections={initialCollections} tags={[...new Set(localCharacters.flatMap(c => c.tags || []))].sort()} />
           <div className="flex flex-1 flex-col">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-panel">
               <div className="flex-1"><LibrarySearch /></div>
@@ -662,6 +704,14 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                   <span className="text-[10px] text-white/70 font-mono tracking-widest text-center">
                     QUÁ TRÌNH NÀY SẼ MẤT ÍT GIÂY TÙY VÀO DUNG LƯỢNG FILE
                   </span>
+                )}
+                {!isExporting && (
+                  <button 
+                    onClick={() => { setLoadingChar(false); setPreviewError('Loading cancelled by user.'); }}
+                    className="mt-2 rounded-md border border-white/20 px-3 py-1 text-[11px] text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                  >
+                    Hủy
+                  </button>
                 )}
               </div>
             </div>

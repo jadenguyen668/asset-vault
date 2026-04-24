@@ -6,7 +6,21 @@ export const dynamic = 'force-dynamic';
 
 export default async function LibraryPage() {
   const supabase = await createServerSupabaseClient();
-  const { data: characters } = await supabase.from('characters').select('*').order('last_viewed_at', { ascending: false }).limit(100);
+  const LIGHT_COLUMNS = [
+    'id', 'user_id', 'asset_type', 'name', 'json_name',
+    'spine_version', 'major_version', 'minor_version',
+    'bone_count', 'slot_count', 'anim_count', 'anim_names', 'skin_count',
+    'file_size', 'json_size', 'atlas_size', 'png_sizes',
+    'thumbnail', 'tags', 'notes', 'status',
+    'project_id', 'collection_ids', 'allow_download', 'preview_config',
+    'json_path', 'atlas_path',
+    'imported_at', 'last_viewed_at',
+  ].join(', ');
+  const { data: characters, error: charError } = await supabase.from('characters')
+    .select(LIGHT_COLUMNS)
+    .order('last_viewed_at', { ascending: false })
+    .limit(200);
+  if (charError) console.error('[LibraryPage] Query error:', charError);
   const { data: projects } = await supabase.from('projects').select('*').order('created_at');
   const { data: collections } = await supabase.from('collections').select('*').order('created_at');
 

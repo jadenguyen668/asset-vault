@@ -17,7 +17,11 @@ export async function saveCharacter(char: Omit<Character, 'id' | 'created_at'>):
   const supabase = createClient();
   const userId = await getUserId();
   
-  // Build clean row — only include DB-valid fields
+  // Extract heavy text data — will be saved separately to avoid API payload limits
+  const jsonText = char.json_text || '';
+  const atlasText = char.atlas_text || '';
+  
+  // Build lightweight row — NO json_text/atlas_text (those are multi-MB)
   const row: Record<string, any> = {
     user_id: userId,
     name: char.name || 'Untitled',
@@ -27,8 +31,8 @@ export async function saveCharacter(char: Omit<Character, 'id' | 'created_at'>):
     spine_version: char.spine_version || '',
     major_version: char.major_version ?? 3,
     minor_version: char.minor_version ?? 8,
-    json_text: char.json_text || '',
-    atlas_text: char.atlas_text || '',
+    json_text: '',  // placeholder — will be updated separately
+    atlas_text: '', // placeholder — will be updated separately
     bone_count: char.bone_count ?? 0,
     slot_count: char.slot_count ?? 0,
     anim_count: char.anim_count ?? 0,
@@ -44,7 +48,7 @@ export async function saveCharacter(char: Omit<Character, 'id' | 'created_at'>):
     imported_at: char.imported_at || new Date().toISOString(),
     last_viewed_at: char.last_viewed_at || new Date().toISOString(),
   };
-  // Optional fields — only include if they have values (some may not exist on Cloud DB yet)
+  // Optional fields — only include if they have values
   const optionalFields: Record<string, any> = {
     allow_download: char.allow_download ?? true,
     collection_ids: char.collection_ids || [],
@@ -61,34 +65,50 @@ export async function saveCharacter(char: Omit<Character, 'id' | 'created_at'>):
 
   console.log('[saveCharacter] userId:', userId, '| json_name:', row.json_name);
 
+  // Phase 1: Save lightweight metadata
+  let charId: number;
   const { data: existing } = await supabase.from('characters').select('id').eq('json_name', char.json_name).eq('user_id', userId).maybeSingle();
   if (existing) {
     const { error: updateError } = await supabase.from('characters').update(row).eq('id', existing.id);
     if (updateError) { console.error('[saveCharacter] UPDATE error:', updateError); throw updateError; }
     console.log('[saveCharacter] Updated existing id:', existing.id);
-    return existing.id;
-  }
-  
-  // Try insert — auto-retry by stripping unknown columns if DB schema is out of date
-  let insertRow = { ...row };
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data, error } = await supabase.from('characters').insert(insertRow).select('id').single();
-    if (!error) {
-      console.log('[saveCharacter] Inserted new id:', data.id);
-      return data.id;
+    charId = existing.id;
+  } else {
+    // Try insert — auto-retry by stripping unknown columns if DB schema is out of date
+    let insertRow = { ...row };
+    let insertedId: number | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data, error } = await supabase.from('characters').insert(insertRow).select('id').single();
+      if (!error) {
+        console.log('[saveCharacter] Inserted new id:', data.id);
+        insertedId = data.id;
+        break;
+      }
+      const colMatch = error.message?.match(/Could not find the '(\w+)' column/);
+      if (colMatch) {
+        const badCol = colMatch[1];
+        console.warn(`[saveCharacter] Column '${badCol}' not found, stripping and retrying...`);
+        delete insertRow[badCol];
+        continue;
+      }
+      console.error('[saveCharacter] INSERT error:', error);
+      throw error;
     }
-    // If error is about a missing column, strip it and retry
-    const colMatch = error.message?.match(/Could not find the '(\w+)' column/);
-    if (colMatch) {
-      const badCol = colMatch[1];
-      console.warn(`[saveCharacter] Column '${badCol}' not found on Cloud DB, stripping and retrying...`);
-      delete insertRow[badCol];
-      continue;
-    }
-    console.error('[saveCharacter] INSERT error:', error);
-    throw error;
+    if (insertedId === null) throw new Error('saveCharacter insert failed after retries');
+    charId = insertedId;
   }
-  throw new Error('saveCharacter failed after retries');
+
+  // Phase 2: Save heavy text data separately (avoids single-request payload limits)
+  if (jsonText || atlasText) {
+    console.log('[saveCharacter] Saving heavy text data for id:', charId, `json: ${(jsonText.length / 1024).toFixed(0)}KB, atlas: ${(atlasText.length / 1024).toFixed(0)}KB`);
+    const { error: textError } = await supabase.from('characters').update({ json_text: jsonText, atlas_text: atlasText }).eq('id', charId);
+    if (textError) {
+      console.error('[saveCharacter] Heavy text update failed:', textError);
+      // Don't throw — metadata is saved, text can be recovered from R2
+    }
+  }
+
+  return charId;
 }
 
 export async function getAllCharacters(): Promise<Character[]> {
