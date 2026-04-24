@@ -22,8 +22,7 @@ export function UserMenu() {
     try { localStorage.removeItem('spine_library_profile'); } catch {}
     await supabase.auth.signOut();
     document.cookie = 'admin_session=; path=/; max-age=0';
-    router.push('/login');
-    router.refresh();
+    window.location.href = '/login';
   };
 
   // Always show menu - even without profile, at minimum show sign out
