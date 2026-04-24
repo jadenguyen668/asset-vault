@@ -19,11 +19,12 @@ export function UserMenu() {
   }, []);
 
   const handleSignOut = () => {
-    try { localStorage.removeItem('spine_library_profile'); } catch {}
-    document.cookie = 'admin_session=; path=/; max-age=0';
-    // Fire and forget - don't wait for signOut to complete
-    supabase.auth.signOut().catch(() => {});
-    window.location.href = '/login';
+    try {
+      localStorage.removeItem('spine_library_profile');
+      document.cookie = 'admin_session=; path=/; max-age=0';
+      supabase.auth.signOut().catch(() => {});
+    } catch { /* ignore */ }
+    window.location.replace('/login');
   };
 
   // Always show menu - even without profile, at minimum show sign out
