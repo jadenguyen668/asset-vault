@@ -457,30 +457,32 @@ export class SpineViewerEngine {
 
     this.state.renderer.begin();
 
-    // Checkerboard background
-    const checkerSz = 16;
-    if (!this.checkerGlTexture || (this.checkerGlTexture as any)._w !== w || (this.checkerGlTexture as any)._h !== h) {
-      if (this.checkerGlTexture) this.checkerGlTexture.dispose?.();
-      this.checkerGlTexture = null;
-      if (spine4) {
-        const pc = document.createElement('canvas');
-        pc.width = w; pc.height = h;
-        const pctx = pc.getContext('2d')!;
-        pctx.fillStyle = '#3a3a3a'; pctx.fillRect(0, 0, w, h);
-        pctx.fillStyle = '#2a2a2a';
-        for (let y = 0; y < h; y += checkerSz) {
-          for (let x = 0; x < w; x += checkerSz) {
-            if (((x / checkerSz) + (y / checkerSz)) % 2 === 0) pctx.fillRect(x, y, checkerSz, checkerSz);
+    // Checkerboard background — skip when capturing thumbnail
+    if (!this._capturingThumbnail) {
+      const checkerSz = 16;
+      if (!this.checkerGlTexture || (this.checkerGlTexture as any)._w !== w || (this.checkerGlTexture as any)._h !== h) {
+        if (this.checkerGlTexture) this.checkerGlTexture.dispose?.();
+        this.checkerGlTexture = null;
+        if (spine4) {
+          const pc = document.createElement('canvas');
+          pc.width = w; pc.height = h;
+          const pctx = pc.getContext('2d')!;
+          pctx.fillStyle = '#3a3a3a'; pctx.fillRect(0, 0, w, h);
+          pctx.fillStyle = '#2a2a2a';
+          for (let y = 0; y < h; y += checkerSz) {
+            for (let x = 0; x < w; x += checkerSz) {
+              if (((x / checkerSz) + (y / checkerSz)) % 2 === 0) pctx.fillRect(x, y, checkerSz, checkerSz);
+            }
           }
+          this.checkerGlTexture = new spine4.GLTexture(gl, pc as any);
+          (this.checkerGlTexture as any)._w = w;
+          (this.checkerGlTexture as any)._h = h;
         }
-        this.checkerGlTexture = new spine4.GLTexture(gl, pc as any);
-        (this.checkerGlTexture as any)._w = w;
-        (this.checkerGlTexture as any)._h = h;
       }
-    }
-    if (this.checkerGlTexture) {
-      const camW = w / vz, camH = h / vz;
-      this.state.renderer.drawTexture(this.checkerGlTexture, w / 2 - camW / 2, h / 2 - camH / 2, camW, camH);
+      if (this.checkerGlTexture) {
+        const camW = w / vz, camH = h / vz;
+        this.state.renderer.drawTexture(this.checkerGlTexture, w / 2 - camW / 2, h / 2 - camH / 2, camW, camH);
+      }
     }
 
     // Crosshair (Origin) — skip when capturing thumbnail
@@ -498,8 +500,8 @@ export class SpineViewerEngine {
       }
     }
 
-    // Background image
-    if (this.state.bgImage && spine4) {
+    // Background image — skip when capturing thumbnail
+    if (this.state.bgImage && spine4 && !this._capturingThumbnail) {
       if (!this.bgGlTexture || this.bgImageSrc !== this.state.bgImage.src) {
         this.bgGlTexture?.dispose();
         this.bgGlTexture = new spine4.GLTexture(gl, this.state.bgImage);
