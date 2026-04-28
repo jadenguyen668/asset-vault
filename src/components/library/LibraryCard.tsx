@@ -16,16 +16,7 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
       className={`group relative flex w-[160px] cursor-pointer flex-col overflow-hidden rounded-xl border transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_6px_24px_rgba(124,92,252,0.2)] ${isSelected ? 'border-accent ring-2 ring-accent/30 bg-accent/5' : 'border-border bg-panel-secondary hover:border-accent/60'}`}
     >
       {/* Thumbnail — fixed aspect ratio, centered */}
-      <div className="relative aspect-square w-full overflow-hidden bg-[#12121e]">
-        {/* Checkerboard background pattern */}
-        <div 
-          className="absolute inset-0 opacity-[0.04]" 
-          style={{ 
-            backgroundImage: 'linear-gradient(45deg, #fff 25%, transparent 25%), linear-gradient(-45deg, #fff 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #fff 75%), linear-gradient(-45deg, transparent 75%, #fff 75%)',
-            backgroundSize: '16px 16px',
-            backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px'
-          }} 
-        />
+      <div className="relative aspect-square w-full overflow-hidden bg-[#1a1a2e]">
         {character.thumbnail ? (
           <img 
             src={character.thumbnail} 
