@@ -64,7 +64,7 @@ export function AuthForm() {
       <div className="mb-6 flex flex-col items-center">
         <div className="flex items-center mb-2">
           <img src="/logo.png" alt="Asset Vault" className="h-10 w-10 object-contain -mr-0.5 hover:scale-110 transition-transform duration-300" style={{ filter: 'drop-shadow(0 3px 10px rgba(249,115,22,0.7))' }} />
-          <h1 className="text-[32px] font-black tracking-tight leading-none select-none bg-gradient-to-r from-orange-400 via-rose-400 to-pink-500 bg-clip-text text-transparent py-1" style={{ filter: 'drop-shadow(0 3px 8px rgba(244,63,94,0.4))' }}>ASSETVAULT</h1>
+          <h1 className="text-[32px] font-black tracking-tight leading-none select-none py-1"><span className="text-white">ASSET</span><span className="bg-gradient-to-r from-orange-400 via-rose-500 to-pink-500 bg-clip-text text-transparent">VAULT</span></h1>
         </div>
         <p className="text-[13px] font-medium text-dim/70 tracking-widest uppercase">Asset Management Platform</p>
       </div>
