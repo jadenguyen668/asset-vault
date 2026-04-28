@@ -5542,6 +5542,7 @@ var spine;
 		function SkeletonJson(attachmentLoader) {
 			this.scale = 1;
 			this.linkedMeshes = new Array();
+			this.tempColor = new spine.Color();
 			this.attachmentLoader = attachmentLoader;
 		}
 		SkeletonJson.prototype.readSkeletonData = function (json) {
@@ -5952,7 +5953,7 @@ var spine;
 							var frameIndex = 0;
 							for (var i = 0; i < timelineMap.length; i++) {
 								var valueMap = timelineMap[i];
-								var color = new spine.Color();
+								var color = this.tempColor; color.set();
 								color.setFromString(valueMap.color);
 								timeline.setFrame(frameIndex, this.getValue(valueMap, "time", 0), color.r, color.g, color.b, color.a);
 								this.readCurve(valueMap, timeline, frameIndex);
@@ -8315,6 +8316,7 @@ var spine;
 				var vertices = this.vertices;
 				var triangles = null;
 				var drawOrder = skeleton.drawOrder;
+				var ctx = this.ctx;
 				for (var i = 0, n = drawOrder.length; i < n; i++) {
 					var slot = drawOrder[i];
 					var attachment = slot.getAttachment();
@@ -8336,38 +8338,45 @@ var spine;
 					else
 						continue;
 					if (texture != null) {
-						var slotBlendMode = slot.data.blendMode;
-						if (slotBlendMode != blendMode) {
-							blendMode = slotBlendMode;
-						}
 						var skeleton_2 = slot.bone.skeleton;
 						var skeletonColor = skeleton_2.color;
 						var slotColor = slot.color;
 						var attachmentColor = attachment.color;
 						var alpha = skeletonColor.a * slotColor.a * attachmentColor.a;
-						var color = this.tempColor;
-						color.set(skeletonColor.r * slotColor.r * attachmentColor.r, skeletonColor.g * slotColor.g * attachmentColor.g, skeletonColor.b * slotColor.b * attachmentColor.b, alpha);
-						var ctx = this.ctx;
-						ctx.globalAlpha = color.a;
-						for (var j = 0; j < triangles.length; j += 3) {
-							var t1 = triangles[j] * 8, t2 = triangles[j + 1] * 8, t3 = triangles[j + 2] * 8;
-							var x0 = vertices[t1], y0 = vertices[t1 + 1], u0 = vertices[t1 + 6], v0 = vertices[t1 + 7];
-							var x1 = vertices[t2], y1 = vertices[t2 + 1], u1 = vertices[t2 + 6], v1 = vertices[t2 + 7];
-							var x2 = vertices[t3], y2 = vertices[t3 + 1], u2 = vertices[t3 + 6], v2 = vertices[t3 + 7];
-							this.drawTriangle(texture, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
-							if (this.debugRendering) {
-								ctx.strokeStyle = "green";
-								ctx.beginPath();
-								ctx.moveTo(x0, y0);
-								ctx.lineTo(x1, y1);
-								ctx.lineTo(x2, y2);
-								ctx.lineTo(x0, y0);
-								ctx.stroke();
-							}
+						var color = this.tempColor; color.set(
+							skeletonColor.r * slotColor.r * attachmentColor.r,
+							skeletonColor.g * slotColor.g * attachmentColor.g,
+							skeletonColor.b * slotColor.b * attachmentColor.b,
+							alpha);
+
+						// Resolve blend mode (handles both numeric and enum styles)
+						var slotBlendMode = slot.data.blendMode;
+						var blendModeNum = slotBlendMode;
+						if (typeof slotBlendMode === 'object' || typeof slotBlendMode === 'string') {
+							var bmStr = String(slotBlendMode).toLowerCase();
+							if (bmStr.indexOf('additive') >= 0 || bmStr === '1') blendModeNum = 1;
+							else if (bmStr.indexOf('multiply') >= 0 || bmStr === '2') blendModeNum = 2;
+							else if (bmStr.indexOf('screen') >= 0 || bmStr === '3') blendModeNum = 3;
+							else blendModeNum = 0;
 						}
+
+					// Set blend mode directly on canvas (fast path)
+					ctx.globalAlpha = color.a;
+					if (blendModeNum === 1) ctx.globalCompositeOperation = "lighter";
+					else if (blendModeNum === 2) ctx.globalCompositeOperation = "multiply";
+					else if (blendModeNum === 3) ctx.globalCompositeOperation = "screen";
+					else ctx.globalCompositeOperation = "source-over";
+					for (var j = 0; j < triangles.length; j += 3) {
+						var t1 = triangles[j] * 8, t2 = triangles[j + 1] * 8, t3 = triangles[j + 2] * 8;
+						var x0 = vertices[t1], y0 = vertices[t1 + 1], u0 = vertices[t1 + 6], v0 = vertices[t1 + 7];
+						var x1 = vertices[t2], y1 = vertices[t2 + 1], u1 = vertices[t2 + 6], v1 = vertices[t2 + 7];
+						var x2 = vertices[t3], y2 = vertices[t3 + 1], u2 = vertices[t3 + 6], v2 = vertices[t3 + 7];
+						this.drawTriangle(texture, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
+					}
 					}
 				}
-				this.ctx.globalAlpha = 1;
+				ctx.globalAlpha = 1;
+				ctx.globalCompositeOperation = "source-over";
 			};
 			SkeletonRenderer.prototype.drawTriangle = function (img, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2) {
 				var ctx = this.ctx;

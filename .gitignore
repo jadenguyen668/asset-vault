@@ -12,3 +12,4 @@ tsconfig.tsbuildinfo
 
 # reference assets
 reference/
+.vercel

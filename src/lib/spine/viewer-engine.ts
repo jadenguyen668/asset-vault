@@ -203,6 +203,8 @@ export class SpineViewerEngine {
     const w = canvas.width;
     const h = canvas.height;
 
+    ctx2d.globalCompositeOperation = 'source-over';
+    ctx2d.globalAlpha = 1;
     ctx2d.save();
     if (!this.checkerPattern) {
       const sz = 16;
