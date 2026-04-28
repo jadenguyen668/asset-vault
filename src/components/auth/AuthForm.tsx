@@ -61,9 +61,12 @@ export function AuthForm() {
 
   return (
     <div className="w-full max-w-sm rounded-xl border border-border bg-panel p-8 shadow-2xl">
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold tracking-wider text-white">ASSET <span className="bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">VAULT</span></h1>
-        <p className="mt-1 text-xs text-dim">Asset Management Platform</p>
+      <div className="mb-6 flex flex-col items-center">
+        <div className="flex items-center gap-2 mb-1">
+          <img src="/logo.png" alt="Asset Vault" className="h-8 w-8 object-contain drop-shadow-[0_2px_8px_rgba(249,115,22,0.6)]" />
+          <h1 className="text-2xl font-bold tracking-wider text-white">ASSET <span className="bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">VAULT</span></h1>
+        </div>
+        <p className="text-xs text-dim">Asset Management Platform</p>
       </div>
       <div className="mb-6 flex gap-1 rounded-lg bg-bg p-1">
         {(['login', 'signup', 'forgot'] as AuthView[]).map((v) => (
