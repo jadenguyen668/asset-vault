@@ -175,17 +175,17 @@ export class SpineViewerEngine {
     }
 
     if (this._captureResolve && this.state.canvas) {
-      // Re-render without crosshair for clean thumbnail
+      // Re-render with transparent bg, no crosshair, no bg image for clean capture
       this._capturingThumbnail = true;
       if (this.state.runtimeVersion === '3.x') {
         this.renderCanvas2D(0);
       } else {
         this.renderWebGL(0);
       }
-      const dataUrl = this.state.canvas.toDataURL('image/webp', 0.8);
-      this._captureResolve(dataUrl);
+      const cb = this._captureResolve;
       this._captureResolve = null;
       this._capturingThumbnail = false;
+      cb('');
     }
   };
 
@@ -196,102 +196,75 @@ export class SpineViewerEngine {
         resolve('');
         return;
       }
-
-      const THUMB_SIZE = 300;
-      const skeleton = this.state.skeleton;
-      const animState = this.state.animState;
-
-      try {
-        // Compute skeleton bounds for auto-fit
-        let bx = 0, by = 0, bw = 400, bh = 400;
+      // Schedule capture in render loop — it will re-render with transparent bg
+      this._captureResolve = () => {
         try {
-          const bounds = skeleton.getBoundsRect();
-          if (bounds && bounds.width > 0 && bounds.height > 0) {
-            bx = bounds.x; by = bounds.y; bw = bounds.width; bh = bounds.height;
+          const src = this.state!.canvas;
+          const THUMB_SIZE = 300;
+
+          // Read pixels to find actual skeleton content bounds
+          const tmpCanvas = document.createElement('canvas');
+          tmpCanvas.width = src.width;
+          tmpCanvas.height = src.height;
+          const tmpCtx = tmpCanvas.getContext('2d')!;
+          tmpCtx.drawImage(src, 0, 0);
+          const imageData = tmpCtx.getImageData(0, 0, src.width, src.height);
+          const px = imageData.data;
+
+          let minX = src.width, minY = src.height, maxX = 0, maxY = 0;
+          // Sample every 2nd pixel for speed
+          for (let y = 0; y < src.height; y += 2) {
+            for (let x = 0; x < src.width; x += 2) {
+              if (px[(y * src.width + x) * 4 + 3] > 5) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+              }
+            }
           }
-        } catch {
-          const sdW = skeleton.data.width || 0;
-          const sdH = skeleton.data.height || 0;
-          if (sdW > 0 && sdH > 0) { bw = sdW; bh = sdH; bx = -sdW / 2; by = -sdH / 2; }
-        }
 
-        const padding = 0.85;
-        const fitScale = Math.min(
-          (THUMB_SIZE * padding) / bw,
-          (THUMB_SIZE * padding) / bh
-        );
-        const cx = bx + bw / 2;
-        const cy = by + bh / 2;
-
-        if (this.state.runtimeVersion === '3.x') {
-          // Create temporary canvas + renderer for clean thumbnail
-          const thumbCanvas = document.createElement('canvas');
-          thumbCanvas.width = THUMB_SIZE;
-          thumbCanvas.height = THUMB_SIZE;
-          const thumbCtx = thumbCanvas.getContext('2d')!;
-          thumbCtx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
-
-          const spine = (window as any).spine;
-          if (!spine?.canvas?.SkeletonRenderer) {
+          if (maxX <= minX || maxY <= minY) {
             resolve('');
             return;
           }
-          const thumbRenderer = new spine.canvas.SkeletonRenderer(thumbCtx);
-          thumbRenderer.debugRendering = false;
-          thumbRenderer.triangleRendering = true;
 
-          thumbCtx.save();
-          thumbCtx.translate(THUMB_SIZE / 2, THUMB_SIZE / 2);
-          thumbCtx.scale(fitScale, -fitScale);
-          thumbCtx.translate(-cx, -cy);
+          // Add padding around content
+          const contentW = maxX - minX;
+          const contentH = maxY - minY;
+          const pad = Math.max(contentW, contentH) * 0.08;
+          minX = Math.max(0, minX - pad);
+          minY = Math.max(0, minY - pad);
+          maxX = Math.min(src.width, maxX + pad);
+          maxY = Math.min(src.height, maxY + pad);
 
-          if (animState) {
-            animState.apply(skeleton);
-            skeleton.updateWorldTransform();
-          }
-          try { thumbRenderer.draw(skeleton); } catch {}
-          thumbCtx.restore();
+          // Make square crop centered on content
+          const finalW = maxX - minX;
+          const finalH = maxY - minY;
+          const cropSize = Math.max(finalW, finalH);
+          const centerX = (minX + maxX) / 2;
+          const centerY = (minY + maxY) / 2;
+          let sx = centerX - cropSize / 2;
+          let sy = centerY - cropSize / 2;
+          // Clamp to canvas bounds
+          if (sx < 0) sx = 0;
+          if (sy < 0) sy = 0;
+          if (sx + cropSize > src.width) sx = Math.max(0, src.width - cropSize);
+          if (sy + cropSize > src.height) sy = Math.max(0, src.height - cropSize);
+
+          const thumbCanvas = document.createElement('canvas');
+          thumbCanvas.width = THUMB_SIZE;
+          thumbCanvas.height = THUMB_SIZE;
+          const tctx = thumbCanvas.getContext('2d')!;
+          tctx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+          tctx.drawImage(src, sx, sy, cropSize, cropSize, 0, 0, THUMB_SIZE, THUMB_SIZE);
 
           resolve(thumbCanvas.toDataURL('image/webp', 0.85));
-        } else if (this.state.runtimeVersion === '4.x') {
-          // For WebGL, schedule capture in render loop then crop to fit
-          this._captureResolve = (dataUrl: string) => {
-            // dataUrl is full canvas — crop to skeleton bounds area
-            const src = this.state!.canvas;
-            const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = THUMB_SIZE;
-            thumbCanvas.height = THUMB_SIZE;
-            const tctx = thumbCanvas.getContext('2d')!;
-            tctx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
-
-            // Calculate where skeleton is on canvas
-            const canW = src.width;
-            const canH = src.height;
-            const baseScale = this.state!.baseScale * this.state!.scale;
-            const vz = this.state!.viewZoom;
-            // Skeleton center on canvas
-            const skCenterX = canW / 2 + this.state!.offsetX;
-            const skCenterY = canH / 2 + this.state!.offsetY;
-            // Skeleton pixel size on canvas
-            const skPixelW = bw * baseScale * vz;
-            const skPixelH = bh * baseScale * vz;
-            // Crop region
-            const cropPad = 1.15;
-            const cropW = skPixelW * cropPad;
-            const cropH = skPixelH * cropPad;
-            const cropX = skCenterX - cropW / 2;
-            const cropY = skCenterY - cropH / 2;
-
-            tctx.drawImage(src, cropX, cropY, cropW, cropH, 0, 0, THUMB_SIZE, THUMB_SIZE);
-            resolve(thumbCanvas.toDataURL('image/webp', 0.85));
-          };
-        } else {
+        } catch (e) {
+          console.warn('[captureThumbnail] Error:', e);
           resolve('');
         }
-      } catch (e) {
-        console.warn('[captureThumbnail] Error:', e);
-        resolve('');
-      }
+      };
     });
   }
 
@@ -305,27 +278,32 @@ export class SpineViewerEngine {
     ctx2d.globalCompositeOperation = 'source-over';
     ctx2d.globalAlpha = 1;
     ctx2d.save();
-    if (!this.checkerPattern) {
-      const sz = 16;
-      const pc = document.createElement('canvas');
-      pc.width = sz * 2; pc.height = sz * 2;
-      const pctx = pc.getContext('2d')!;
-      pctx.fillStyle = '#3a3a3a';
-      pctx.fillRect(0, 0, sz * 2, sz * 2);
-      pctx.fillStyle = '#2a2a2a';
-      pctx.fillRect(0, 0, sz, sz);
-      pctx.fillRect(sz, sz, sz, sz);
-      this.checkerPattern = ctx2d.createPattern(pc, 'repeat');
+    if (this._capturingThumbnail) {
+      // Transparent background for clean thumbnail capture
+      ctx2d.clearRect(0, 0, w, h);
+    } else {
+      if (!this.checkerPattern) {
+        const sz = 16;
+        const pc = document.createElement('canvas');
+        pc.width = sz * 2; pc.height = sz * 2;
+        const pctx = pc.getContext('2d')!;
+        pctx.fillStyle = '#3a3a3a';
+        pctx.fillRect(0, 0, sz * 2, sz * 2);
+        pctx.fillStyle = '#2a2a2a';
+        pctx.fillRect(0, 0, sz, sz);
+        pctx.fillRect(sz, sz, sz, sz);
+        this.checkerPattern = ctx2d.createPattern(pc, 'repeat');
+      }
+      ctx2d.fillStyle = this.checkerPattern || '#2e2e2e';
+      ctx2d.fillRect(0, 0, w, h);
     }
-    ctx2d.fillStyle = this.checkerPattern || '#2e2e2e';
-    ctx2d.fillRect(0, 0, w, h);
 
     const vz = this.state.viewZoom;
     ctx2d.translate(w / 2, h / 2);
     ctx2d.scale(vz, vz);
     ctx2d.translate(-w / 2, -h / 2);
 
-    if (this.state.bgImage) {
+    if (this.state.bgImage && !this._capturingThumbnail) {
       const bgDisplayScale = this.state.baseScale * this.state.bgScale;
       const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
       const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
