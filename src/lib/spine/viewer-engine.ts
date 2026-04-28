@@ -192,7 +192,106 @@ export class SpineViewerEngine {
   private _captureResolve: ((dataUrl: string) => void) | null = null;
   captureThumbnail(): Promise<string> {
     return new Promise((resolve) => {
-      this._captureResolve = resolve;
+      if (!this.state?.skeleton || !this.state.canvas) {
+        resolve('');
+        return;
+      }
+
+      const THUMB_SIZE = 300;
+      const skeleton = this.state.skeleton;
+      const animState = this.state.animState;
+
+      try {
+        // Compute skeleton bounds for auto-fit
+        let bx = 0, by = 0, bw = 400, bh = 400;
+        try {
+          const bounds = skeleton.getBoundsRect();
+          if (bounds && bounds.width > 0 && bounds.height > 0) {
+            bx = bounds.x; by = bounds.y; bw = bounds.width; bh = bounds.height;
+          }
+        } catch {
+          const sdW = skeleton.data.width || 0;
+          const sdH = skeleton.data.height || 0;
+          if (sdW > 0 && sdH > 0) { bw = sdW; bh = sdH; bx = -sdW / 2; by = -sdH / 2; }
+        }
+
+        const padding = 0.85;
+        const fitScale = Math.min(
+          (THUMB_SIZE * padding) / bw,
+          (THUMB_SIZE * padding) / bh
+        );
+        const cx = bx + bw / 2;
+        const cy = by + bh / 2;
+
+        if (this.state.runtimeVersion === '3.x') {
+          // Create temporary canvas + renderer for clean thumbnail
+          const thumbCanvas = document.createElement('canvas');
+          thumbCanvas.width = THUMB_SIZE;
+          thumbCanvas.height = THUMB_SIZE;
+          const thumbCtx = thumbCanvas.getContext('2d')!;
+          thumbCtx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+
+          const spine = (window as any).spine;
+          if (!spine?.canvas?.SkeletonRenderer) {
+            resolve('');
+            return;
+          }
+          const thumbRenderer = new spine.canvas.SkeletonRenderer(thumbCtx);
+          thumbRenderer.debugRendering = false;
+          thumbRenderer.triangleRendering = true;
+
+          thumbCtx.save();
+          thumbCtx.translate(THUMB_SIZE / 2, THUMB_SIZE / 2);
+          thumbCtx.scale(fitScale, -fitScale);
+          thumbCtx.translate(-cx, -cy);
+
+          if (animState) {
+            animState.apply(skeleton);
+            skeleton.updateWorldTransform();
+          }
+          try { thumbRenderer.draw(skeleton); } catch {}
+          thumbCtx.restore();
+
+          resolve(thumbCanvas.toDataURL('image/webp', 0.85));
+        } else if (this.state.runtimeVersion === '4.x') {
+          // For WebGL, schedule capture in render loop then crop to fit
+          this._captureResolve = (dataUrl: string) => {
+            // dataUrl is full canvas — crop to skeleton bounds area
+            const src = this.state!.canvas;
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = THUMB_SIZE;
+            thumbCanvas.height = THUMB_SIZE;
+            const tctx = thumbCanvas.getContext('2d')!;
+            tctx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+
+            // Calculate where skeleton is on canvas
+            const canW = src.width;
+            const canH = src.height;
+            const baseScale = this.state!.baseScale * this.state!.scale;
+            const vz = this.state!.viewZoom;
+            // Skeleton center on canvas
+            const skCenterX = canW / 2 + this.state!.offsetX;
+            const skCenterY = canH / 2 + this.state!.offsetY;
+            // Skeleton pixel size on canvas
+            const skPixelW = bw * baseScale * vz;
+            const skPixelH = bh * baseScale * vz;
+            // Crop region
+            const cropPad = 1.15;
+            const cropW = skPixelW * cropPad;
+            const cropH = skPixelH * cropPad;
+            const cropX = skCenterX - cropW / 2;
+            const cropY = skCenterY - cropH / 2;
+
+            tctx.drawImage(src, cropX, cropY, cropW, cropH, 0, 0, THUMB_SIZE, THUMB_SIZE);
+            resolve(thumbCanvas.toDataURL('image/webp', 0.85));
+          };
+        } else {
+          resolve('');
+        }
+      } catch (e) {
+        console.warn('[captureThumbnail] Error:', e);
+        resolve('');
+      }
     });
   }
 
