@@ -296,7 +296,18 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       const si = viewerRef.current?.getSkeletonInfo();
       if (si) setSkelInfo(si);
     }, 100);
-  }, []);
+    // Auto re-capture thumbnail after render stabilizes (fixes old black thumbnails)
+    setTimeout(async () => {
+      try {
+        if (!viewerRef.current || !selectedChar) return;
+        const thumb = await viewerRef.current.captureThumbnail();
+        if (!thumb) return;
+        const supabase = createClient();
+        await supabase.from('characters').update({ thumbnail: thumb }).eq('id', selectedChar.id);
+        setLocalCharacters(prev => prev.map(c => c.id === selectedChar.id ? { ...c, thumbnail: thumb } : c));
+      } catch { /* silent */ }
+    }, 800);
+  }, [selectedChar]);
 
   const handleViewerError = useCallback((error: string) => {
     setPreviewError(error);
