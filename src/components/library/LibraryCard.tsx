@@ -16,7 +16,7 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
       className={`group relative flex w-[160px] cursor-pointer flex-col overflow-hidden rounded-xl border transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_6px_24px_rgba(124,92,252,0.2)] ${isSelected ? 'border-accent ring-2 ring-accent/30 bg-accent/5' : 'border-border bg-panel-secondary hover:border-accent/60'}`}
     >
       {/* Thumbnail — fixed aspect ratio, centered */}
-      <div className="relative aspect-square w-full overflow-hidden bg-[#1a1a2e]">
+      <div className="relative aspect-square w-full overflow-hidden" style={{ backgroundColor: '#1c1a38' }}>
         {character.thumbnail ? (
           <img 
             src={character.thumbnail} 

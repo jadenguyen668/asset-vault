@@ -61,6 +61,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [globalBgImage, setGlobalBgImage] = useState<HTMLImageElement | null>(null);
   const globalBgConfigRef = useRef<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>({ image: null, offsetX: 0, offsetY: 0, scale: 1 });
   const globalPlaybackConfigRef = useRef<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>({ speed: 1, scale: 1, playing: true, looping: true, reversing: false });
+  const previewRequestRef = useRef(0);
+  const activePreviewCharIdRef = useRef<number | null>(null);
 
   const handleBgImageChange = useCallback((img: HTMLImageElement | null) => {
     globalBgConfigRef.current.image = img;
@@ -169,6 +171,9 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
   // Handle card click -> load character in preview (fetch PNGs from R2)
   const handleCardClick = useCallback(async (char: Character) => {
+    const requestId = ++previewRequestRef.current;
+    activePreviewCharIdRef.current = char.id;
+
     // Reset playback config to defaults IMMEDIATELY before any async work
     // so ViewerControls reads 1.0 when it remounts due to key change
     globalPlaybackConfigRef.current.speed = 1;
@@ -181,6 +186,10 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setPreviewCollapsed(false);
     setLoadingChar(true);
     setPreviewError(null);
+    setPreviewFiles(null);
+    setPreviewName(char.name);
+    setPreviewMajor(char.major_version);
+    setPreviewMinor(char.minor_version);
     // Use anim_names from DB immediately so Grid Mode has correct data
     setAnimations(char.anim_names || []);
     setTargetAnimation(null);
@@ -194,11 +203,13 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
          const supabase = createClient();
          const { data, error } = await supabase.from('characters').select('json_text, atlas_text, png_paths, json_path, atlas_path').eq('id', char.id).single();
          if (data) {
+            if (requestId !== previewRequestRef.current) return;
             fullChar = { ...char, ...data, _fullLoaded: true } as any;
             // Update local state so we don't refetch on subsequent clicks
             setLocalCharacters(prev => prev.map(c => c.id === char.id ? { ...c, ...data, _fullLoaded: true } as any : c));
             setSelectedChar(fullChar);
          } else {
+            if (requestId !== previewRequestRef.current) return;
             console.warn('[PREVIEW] Failed to fetch full character data', error);
             setPreviewError('Failed to load character data from database.');
             setLoadingChar(false);
@@ -212,10 +223,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
       if (!jsonText && fullChar.json_path) {
         const blob = await downloadFile(fullChar.json_path);
+        if (requestId !== previewRequestRef.current) return;
         jsonText = await blob.text();
       }
       if (!atlasText && fullChar.atlas_path) {
         const blob = await downloadFile(fullChar.atlas_path);
+        if (requestId !== previewRequestRef.current) return;
         atlasText = await blob.text();
       }
 
@@ -247,6 +260,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         );
       }
 
+      if (requestId !== previewRequestRef.current) return;
+
       if (!jsonText) {
         setPreviewError('No skeleton data available for this character.');
         setLoadingChar(false);
@@ -264,16 +279,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       setPreviewMinor(fullChar.minor_version);
       setPreviewName(fullChar.name);
     } catch (e: any) {
+      if (requestId !== previewRequestRef.current) return;
       console.error('[PREVIEW] Error loading character:', e);
       setPreviewError(e?.message || 'Failed to load character assets');
     } finally {
-      setLoadingChar(false);
+      if (requestId === previewRequestRef.current) setLoadingChar(false);
     }
   }, []);
 
   // Handle drag-drop files -> preview directly
   const handleFilesLoaded = useCallback((sets: ParsedSpineSet[]) => {
     if (sets.length === 0) return;
+    previewRequestRef.current += 1;
+    activePreviewCharIdRef.current = null;
     setActiveSets(sets);
     const first = sets[0];
     setPreviewFiles(first.spineFiles);
@@ -288,26 +306,17 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [skelInfo, setSkelInfo] = useState<{ bones: number; slots: number; anims: number; skins: number } | null>(null);
 
   const handleViewerLoaded = useCallback((info: { animations: string[]; skins: string[]; bones: string[] }) => {
+    const requestId = previewRequestRef.current;
     setAnimations(info.animations);
     setSkins(info.skins);
     setBones(info.bones);
     // Get skeleton info after a tick (engine needs to finish setup)
     setTimeout(() => {
+      if (requestId !== previewRequestRef.current) return;
       const si = viewerRef.current?.getSkeletonInfo();
       if (si) setSkelInfo(si);
     }, 100);
-    // Auto re-capture thumbnail after render stabilizes (fixes old black thumbnails)
-    setTimeout(async () => {
-      try {
-        if (!viewerRef.current || !selectedChar) return;
-        const thumb = await viewerRef.current.captureThumbnail();
-        if (!thumb) return;
-        const supabase = createClient();
-        await supabase.from('characters').update({ thumbnail: thumb }).eq('id', selectedChar.id);
-        setLocalCharacters(prev => prev.map(c => c.id === selectedChar.id ? { ...c, thumbnail: thumb } : c));
-      } catch { /* silent */ }
-    }, 800);
-  }, [selectedChar]);
+  }, []);
 
   const handleViewerError = useCallback((error: string) => {
     setPreviewError(error);
@@ -695,12 +704,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
         {/* === TOP: Preview Canvas — always visible with checkerboard === */}
         <div
-          className="relative overflow-hidden"
+          className="relative overflow-hidden checkerboard-bg"
           style={{
             flex: previewMaximized ? 1 : '1 1 50%',
             minHeight: previewMaximized ? 0 : 200,
             borderBottom: '1px solid var(--border)',
-            background: '#1a1a2e',
             outline: draggingOver ? '2px solid var(--accent)' : 'none',
           }}
           onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDraggingOver(true); }}
@@ -751,6 +759,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
               />
             ) : (
               <SpineViewer
+                key={selectedChar?.id ?? previewName ?? 'drop-preview'}
                 ref={viewerRef}
                 spineFiles={previewFiles}
                 majorVersion={previewMajor}

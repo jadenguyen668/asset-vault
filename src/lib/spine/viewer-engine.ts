@@ -80,6 +80,8 @@ export class SpineViewerEngine {
   private trackedBoneName: string | null = null;
   private trailPoints: {x: number, y: number}[] = [];
   private _capturingThumbnail = false;
+  private _thumbnailMatteMode = false;
+  private _thumbnailBoundsCanvas: HTMLCanvasElement | null = null;
   private _dpr = window.devicePixelRatio || 1;
 
   constructor(container: HTMLElement) {
@@ -175,16 +177,30 @@ export class SpineViewerEngine {
     }
 
     if (this._captureResolve && this.state.canvas) {
-      // Re-render with transparent bg, no crosshair, no bg image for clean capture
+      // Pass 1: Transparent render to find content bounds
       this._capturingThumbnail = true;
       if (this.state.runtimeVersion === '3.x') {
         this.renderCanvas2D(0);
       } else {
         this.renderWebGL(0);
       }
+      this._thumbnailBoundsCanvas = document.createElement('canvas');
+      this._thumbnailBoundsCanvas.width = this.state.canvas.width;
+      this._thumbnailBoundsCanvas.height = this.state.canvas.height;
+      this._thumbnailBoundsCanvas.getContext('2d')!.drawImage(this.state.canvas, 0, 0);
+      this._capturingThumbnail = false;
+
+      // Pass 2: Render on solid dark background for final thumbnail
+      this._thumbnailMatteMode = true;
+      if (this.state.runtimeVersion === '3.x') {
+        this.renderCanvas2D(0);
+      } else {
+        this.renderWebGL(0);
+      }
+      this._thumbnailMatteMode = false;
+
       const cb = this._captureResolve;
       this._captureResolve = null;
-      this._capturingThumbnail = false;
       cb('');
     }
   };
@@ -208,22 +224,23 @@ export class SpineViewerEngine {
         clearTimeout(timeout);
         try {
           const src = this.state!.canvas;
+          const boundsSrc = this._thumbnailBoundsCanvas || src;
           const THUMB_SIZE = 300;
 
-          // Read pixels to find actual skeleton content bounds
+          // Read pixels from transparent render to find actual skeleton content bounds
           const tmpCanvas = document.createElement('canvas');
-          tmpCanvas.width = src.width;
-          tmpCanvas.height = src.height;
+          tmpCanvas.width = boundsSrc.width;
+          tmpCanvas.height = boundsSrc.height;
           const tmpCtx = tmpCanvas.getContext('2d')!;
-          tmpCtx.drawImage(src, 0, 0);
-          const imageData = tmpCtx.getImageData(0, 0, src.width, src.height);
+          tmpCtx.drawImage(boundsSrc, 0, 0);
+          const imageData = tmpCtx.getImageData(0, 0, boundsSrc.width, boundsSrc.height);
           const px = imageData.data;
 
-          let minX = src.width, minY = src.height, maxX = 0, maxY = 0;
+          let minX = boundsSrc.width, minY = boundsSrc.height, maxX = 0, maxY = 0;
           // Sample every 2nd pixel for speed
-          for (let y = 0; y < src.height; y += 2) {
-            for (let x = 0; x < src.width; x += 2) {
-              if (px[(y * src.width + x) * 4 + 3] > 5) {
+          for (let y = 0; y < boundsSrc.height; y += 2) {
+            for (let x = 0; x < boundsSrc.width; x += 2) {
+              if (px[(y * boundsSrc.width + x) * 4 + 3] > 5) {
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
                 if (y < minY) minY = y;
@@ -265,12 +282,15 @@ export class SpineViewerEngine {
           thumbCanvas.height = THUMB_SIZE;
           const tctx = thumbCanvas.getContext('2d')!;
           tctx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
+          // Crop from matte canvas (solid dark bg), not transparent one
           tctx.drawImage(src, sx, sy, cropSize, cropSize, 0, 0, THUMB_SIZE, THUMB_SIZE);
 
           resolve(thumbCanvas.toDataURL('image/webp', 0.85));
         } catch (e) {
           console.warn('[captureThumbnail] Error:', e);
           resolve('');
+        } finally {
+          this._thumbnailBoundsCanvas = null;
         }
       };
     });
@@ -282,22 +302,27 @@ export class SpineViewerEngine {
     const { canvas, ctx2d, skeleton, animState } = this.state;
     const w = canvas.width;
     const h = canvas.height;
+    if (w === 0 || h === 0) return;
 
     ctx2d.globalCompositeOperation = 'source-over';
     ctx2d.globalAlpha = 1;
     ctx2d.save();
     if (this._capturingThumbnail) {
-      // Transparent background for clean thumbnail capture
+      // Transparent background for clean bounds detection
       ctx2d.clearRect(0, 0, w, h);
+    } else if (this._thumbnailMatteMode) {
+      // Solid dark background for thumbnail (no checkerboard)
+      ctx2d.fillStyle = '#1c1a38';
+      ctx2d.fillRect(0, 0, w, h);
     } else {
       if (!this.checkerPattern) {
-        const sz = 16;
+        const sz = 20;
         const pc = document.createElement('canvas');
         pc.width = sz * 2; pc.height = sz * 2;
         const pctx = pc.getContext('2d')!;
-        pctx.fillStyle = '#3a3a3a';
+        pctx.fillStyle = '#24243a';
         pctx.fillRect(0, 0, sz * 2, sz * 2);
-        pctx.fillStyle = '#2a2a2a';
+        pctx.fillStyle = '#30304a';
         pctx.fillRect(0, 0, sz, sz);
         pctx.fillRect(sz, sz, sz, sz);
         this.checkerPattern = ctx2d.createPattern(pc, 'repeat');
@@ -311,7 +336,7 @@ export class SpineViewerEngine {
     ctx2d.scale(vz, vz);
     ctx2d.translate(-w / 2, -h / 2);
 
-    if (this.state.bgImage && !this._capturingThumbnail) {
+    if (this.state.bgImage && !this._capturingThumbnail && !this._thumbnailMatteMode) {
       const bgDisplayScale = this.state.baseScale * this.state.bgScale;
       const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
       const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
@@ -323,7 +348,7 @@ export class SpineViewerEngine {
     }
 
     // Crosshair (Origin) — skip when capturing thumbnail
-    if (!this._capturingThumbnail) {
+    if (!this._capturingThumbnail && !this._thumbnailMatteMode) {
       const originX = w / 2 + this.state.offsetX;
       const originY = h * 0.85 + this.state.offsetY;
       const ext = Math.max(w, h) / vz + 2000;
@@ -415,13 +440,13 @@ export class SpineViewerEngine {
   private renderWebGL(delta: number) {
     if (!this.state?.gl) return;
     const { gl, canvas, skeleton, animState } = this.state;
-
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-
     const w = canvas.width;
     const h = canvas.height;
+    if (w === 0 || h === 0) return;
+
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     const vz = this.state.viewZoom;
 
     skeleton.x = w / 2 + this.state.offsetX;
@@ -465,36 +490,57 @@ export class SpineViewerEngine {
 
     this.state.renderer.begin();
 
-    // Checkerboard background — skip when capturing thumbnail
+    // Background: checkerboard for viewer, solid dark for thumbnail matte
     if (!this._capturingThumbnail) {
-      const checkerSz = 16;
-      if (!this.checkerGlTexture || (this.checkerGlTexture as any)._w !== w || (this.checkerGlTexture as any)._h !== h) {
-        if (this.checkerGlTexture) this.checkerGlTexture.dispose?.();
-        this.checkerGlTexture = null;
+      if (this._thumbnailMatteMode) {
+        // Solid dark background for thumbnail (no checkerboard)
         if (spine4) {
-          const pc = document.createElement('canvas');
-          pc.width = w; pc.height = h;
-          const pctx = pc.getContext('2d')!;
-          pctx.fillStyle = '#3a3a3a'; pctx.fillRect(0, 0, w, h);
-          pctx.fillStyle = '#2a2a2a';
-          for (let y = 0; y < h; y += checkerSz) {
-            for (let x = 0; x < w; x += checkerSz) {
-              if (((x / checkerSz) + (y / checkerSz)) % 2 === 0) pctx.fillRect(x, y, checkerSz, checkerSz);
-            }
+          if (!(this as any)._solidBgTex || (this as any)._solidBgW !== w || (this as any)._solidBgH !== h) {
+            (this as any)._solidBgTex?.dispose?.();
+            const pc = document.createElement('canvas');
+            pc.width = w; pc.height = h;
+            const pctx = pc.getContext('2d')!;
+            pctx.fillStyle = '#1c1a38'; pctx.fillRect(0, 0, w, h);
+            (this as any)._solidBgTex = new spine4.GLTexture(gl, pc as any);
+            (this as any)._solidBgW = w;
+            (this as any)._solidBgH = h;
           }
-          this.checkerGlTexture = new spine4.GLTexture(gl, pc as any);
-          (this.checkerGlTexture as any)._w = w;
-          (this.checkerGlTexture as any)._h = h;
+          if ((this as any)._solidBgTex) {
+            const camW = w / vz, camH = h / vz;
+            this.state.renderer.drawTexture((this as any)._solidBgTex, w / 2 - camW / 2, h / 2 - camH / 2, camW, camH);
+          }
         }
-      }
-      if (this.checkerGlTexture) {
-        const camW = w / vz, camH = h / vz;
-        this.state.renderer.drawTexture(this.checkerGlTexture, w / 2 - camW / 2, h / 2 - camH / 2, camW, camH);
+      } else {
+        // Normal checkerboard for viewer
+        const checkerSz = 20;
+        if (!this.checkerGlTexture || (this.checkerGlTexture as any)._w !== w || (this.checkerGlTexture as any)._h !== h) {
+          if (this.checkerGlTexture) this.checkerGlTexture.dispose?.();
+          this.checkerGlTexture = null;
+          if (spine4) {
+            const pc = document.createElement('canvas');
+            pc.width = w; pc.height = h;
+            const pctx = pc.getContext('2d')!;
+            pctx.fillStyle = '#24243a'; pctx.fillRect(0, 0, w, h);
+            pctx.fillStyle = '#30304a';
+            for (let y = 0; y < h; y += checkerSz) {
+              for (let x = 0; x < w; x += checkerSz) {
+                if (((x / checkerSz) + (y / checkerSz)) % 2 === 0) pctx.fillRect(x, y, checkerSz, checkerSz);
+              }
+            }
+            this.checkerGlTexture = new spine4.GLTexture(gl, pc as any);
+            (this.checkerGlTexture as any)._w = w;
+            (this.checkerGlTexture as any)._h = h;
+          }
+        }
+        if (this.checkerGlTexture) {
+          const camW = w / vz, camH = h / vz;
+          this.state.renderer.drawTexture(this.checkerGlTexture, w / 2 - camW / 2, h / 2 - camH / 2, camW, camH);
+        }
       }
     }
 
     // Crosshair (Origin) — skip when capturing thumbnail
-    if (!this._capturingThumbnail) {
+    if (!this._capturingThumbnail && !this._thumbnailMatteMode) {
       if (!this.crosshairGlTexture && spine4) {
         const pc = document.createElement('canvas'); pc.width = 1; pc.height = 1;
         const pctx = pc.getContext('2d')!;
@@ -509,7 +555,7 @@ export class SpineViewerEngine {
     }
 
     // Background image — skip when capturing thumbnail
-    if (this.state.bgImage && spine4 && !this._capturingThumbnail) {
+    if (this.state.bgImage && spine4 && !this._capturingThumbnail && !this._thumbnailMatteMode) {
       if (!this.bgGlTexture || this.bgImageSrc !== this.state.bgImage.src) {
         this.bgGlTexture?.dispose();
         this.bgGlTexture = new spine4.GLTexture(gl, this.state.bgImage);
@@ -528,7 +574,7 @@ export class SpineViewerEngine {
     }
 
     // Crosshair lines — skip when capturing thumbnail
-    if (this.crosshairGlTexture && !this._capturingThumbnail) {
+    if (this.crosshairGlTexture && !this._capturingThumbnail && !this._thumbnailMatteMode) {
       const lineW = 1 / vz;
       const ox = w / 2 + this.state.offsetX, oy = h * 0.2 - this.state.offsetY;
       const camW = w / vz, camH = h / vz;

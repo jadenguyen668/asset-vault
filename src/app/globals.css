@@ -36,3 +36,14 @@ button, a, input, select {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+.checkerboard-bg {
+  background-color: #24243a;
+  background-image:
+    linear-gradient(45deg, #30304a 25%, transparent 25%),
+    linear-gradient(-45deg, #30304a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #30304a 75%),
+    linear-gradient(-45deg, transparent 75%, #30304a 75%);
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background-size: 20px 20px;
+}
