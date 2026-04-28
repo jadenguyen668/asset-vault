@@ -30,7 +30,7 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
           <img 
             src={character.thumbnail} 
             alt={character.name} 
-            className="absolute inset-0 h-full w-full object-cover drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] bg-transparent" 
+            className="absolute inset-0 h-full w-full object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] bg-transparent" 
             draggable={false}
             loading="lazy"
             decoding="async"
@@ -58,8 +58,7 @@ export function LibraryCard({ character, onClick, onDelete, isSelected }: Props)
           </button>
         )}
 
-        {/* Bottom gradient overlay */}
-        <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[#12121e] to-transparent" />
+
       </div>
 
       {/* Info section */}
