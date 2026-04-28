@@ -196,8 +196,16 @@ export class SpineViewerEngine {
         resolve('');
         return;
       }
+      // Timeout safety — resolve with empty if render loop doesn't pick up in 3s
+      const timeout = setTimeout(() => {
+        if (this._captureResolve) {
+          this._captureResolve = null;
+          resolve('');
+        }
+      }, 3000);
       // Schedule capture in render loop — it will re-render with transparent bg
       this._captureResolve = () => {
+        clearTimeout(timeout);
         try {
           const src = this.state!.canvas;
           const THUMB_SIZE = 300;
