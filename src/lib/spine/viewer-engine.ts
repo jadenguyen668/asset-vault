@@ -341,7 +341,7 @@ export class SpineViewerEngine {
       const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
       const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
       const bgOriginX = w / 2 + this.state.offsetX;
-      const bgOriginY = h * 0.85 + this.state.offsetY;
+      const bgOriginY = h / 2 + this.state.offsetY;
       const bx = bgOriginX - imgW / 2 + this.state.bgOffsetX * this.state.baseScale;
       const by = bgOriginY - imgH / 2 + this.state.bgOffsetY * this.state.baseScale;
       ctx2d.drawImage(this.state.bgImage, bx, by, imgW, imgH);
@@ -350,7 +350,7 @@ export class SpineViewerEngine {
     // Crosshair (Origin) — skip when capturing thumbnail
     if (!this._capturingThumbnail && !this._thumbnailMatteMode) {
       const originX = w / 2 + this.state.offsetX;
-      const originY = h * 0.85 + this.state.offsetY;
+      const originY = h / 2 + this.state.offsetY;
       const ext = Math.max(w, h) / vz + 2000;
       
       ctx2d.lineWidth = 1 / vz;
@@ -362,7 +362,7 @@ export class SpineViewerEngine {
       ctx2d.beginPath(); ctx2d.moveTo(originX, originY - ext); ctx2d.lineTo(originX, originY + ext); ctx2d.stroke();
     }
 
-    ctx2d.translate(w / 2 + this.state.offsetX, h * 0.85 + this.state.offsetY);
+    ctx2d.translate(w / 2 + this.state.offsetX, h / 2 + this.state.offsetY);
     ctx2d.scale(this.state.baseScale * this.state.scale, -this.state.baseScale * this.state.scale);
 
     if (this.state.playing) {
@@ -450,7 +450,7 @@ export class SpineViewerEngine {
     const vz = this.state.viewZoom;
 
     skeleton.x = w / 2 + this.state.offsetX;
-    skeleton.y = h * 0.2 - this.state.offsetY;
+    skeleton.y = h / 2 - this.state.offsetY;
     skeleton.scaleX = this.state.baseScale * this.state.scale;
     skeleton.scaleY = this.state.baseScale * this.state.scale;
 
@@ -566,7 +566,7 @@ export class SpineViewerEngine {
         const imgW = this.state.bgImage.naturalWidth * bgDisplayScale;
         const imgH = this.state.bgImage.naturalHeight * bgDisplayScale;
         const bgOriginX = w / 2 + this.state.offsetX;
-        const bgOriginY = h * 0.2 - this.state.offsetY;
+        const bgOriginY = h / 2 - this.state.offsetY;
         const bx = bgOriginX - imgW / 2 + this.state.bgOffsetX * this.state.baseScale;
         const by = bgOriginY - imgH / 2 - this.state.bgOffsetY * this.state.baseScale;
         this.state.renderer.drawTexture(this.bgGlTexture, bx, by, imgW, imgH);
@@ -576,7 +576,7 @@ export class SpineViewerEngine {
     // Crosshair lines — skip when capturing thumbnail
     if (this.crosshairGlTexture && !this._capturingThumbnail && !this._thumbnailMatteMode) {
       const lineW = 1 / vz;
-      const ox = w / 2 + this.state.offsetX, oy = h * 0.2 - this.state.offsetY;
+      const ox = w / 2 + this.state.offsetX, oy = h / 2 - this.state.offsetY;
       const camW = w / vz, camH = h / vz;
       const vpLeft = w / 2 - camW / 2, vpTop = h / 2 - camH / 2;
       // X axis (horizontal line -> red)
@@ -884,6 +884,7 @@ export class SpineViewerEngine {
     };
 
     // Auto-fit: use actual skeleton bounds for reliable sizing and centering
+    // Origin is now at canvas center (w/2, h/2) with Y-flip
     try {
       const offset = new spine.Vector2(), size = new spine.Vector2();
       skeleton.getBounds(offset, size, []);
@@ -891,7 +892,6 @@ export class SpineViewerEngine {
       let refW = size.x;
       let boundsX = offset.x;
       let boundsY = offset.y;
-      // Fallback to skeletonData dimensions if getBounds returns degenerate values
       if (!refH || refH <= 0 || !refW || refW <= 0) {
         refH = skeletonData.height || 400;
         refW = skeletonData.width || 400;
@@ -900,17 +900,16 @@ export class SpineViewerEngine {
       }
       const ch = this.state.canvas.height;
       const cw = this.state.canvas.width;
-      const scaleH = (ch * 0.75) / refH;
-      const scaleW = (cw * 0.75) / refW;
+      const scaleH = (ch * 0.8) / refH;
+      const scaleW = (cw * 0.8) / refW;
       this.state.baseScale = Math.min(scaleH, scaleW, 3);
       this.state.scale = 1;
-      // Center skeleton: offset so bounds center maps to canvas center
-      // Canvas2D origin is at (w/2 + offsetX, h*0.85 + offsetY) with Y-flip
-      // Bounds center in skeleton space = (boundsX + refW/2, boundsY + refH/2)
+      // Center: offset so bounds center maps to skeleton origin (0,0)
+      // Canvas2D renders at (w/2+offsetX, h/2+offsetY) with scale+Y-flip
       const boundsCenterX = boundsX + refW / 2;
       const boundsCenterY = boundsY + refH / 2;
       this.state.offsetX = -boundsCenterX * this.state.baseScale;
-      this.state.offsetY = boundsCenterY * this.state.baseScale - ch * 0.35;
+      this.state.offsetY = boundsCenterY * this.state.baseScale;
     } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 
     const stateData = new spine.AnimationStateData(skeletonData);
@@ -1057,13 +1056,13 @@ export class SpineViewerEngine {
     } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
 
     // Auto-fit: use actual skeleton bounds for reliable sizing and centering
+    // Origin is now at canvas center (w/2, h/2) with Y-up
     try {
       const bounds = skeleton.getBoundsRect();
       let refH = bounds.height;
       let refW = bounds.width;
       let boundsX = bounds.x;
       let boundsY = bounds.y;
-      // Fallback to skeletonData dimensions if getBoundsRect returns degenerate values
       if (!refH || refH <= 0 || !refW || refW <= 0) {
         refH = skeletonData.height || 400;
         refW = skeletonData.width || 400;
@@ -1072,17 +1071,16 @@ export class SpineViewerEngine {
       }
       const ch = this.state.canvas.height;
       const cw = this.state.canvas.width;
-      const scaleH = (ch * 0.75) / refH;
-      const scaleW = (cw * 0.75) / refW;
+      const scaleH = (ch * 0.8) / refH;
+      const scaleW = (cw * 0.8) / refW;
       this.state.baseScale = Math.min(scaleH, scaleW, 3);
       this.state.scale = 1;
-      // Center skeleton: offset so bounds center maps to canvas center
-      // WebGL origin is at (w/2 + offsetX, h*0.2 - offsetY) with Y-up
-      // Bounds center in skeleton space = (boundsX + refW/2, boundsY + refH/2)
+      // Center: offset so bounds center maps to skeleton origin (0,0)
+      // WebGL renders skeleton at (w/2+offsetX, h/2-offsetY)
       const boundsCenterX = boundsX + refW / 2;
       const boundsCenterY = boundsY + refH / 2;
       this.state.offsetX = -boundsCenterX * this.state.baseScale;
-      this.state.offsetY = -(boundsCenterY * this.state.baseScale - ch * 0.3);
+      this.state.offsetY = boundsCenterY * this.state.baseScale;
     } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 
     const stateData = new spine4.AnimationStateData(skeletonData);
