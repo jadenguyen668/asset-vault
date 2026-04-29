@@ -165,9 +165,7 @@ export async function POST(req: Request) {
                 convertedJsonText = JSON.stringify(testParse);
             }
 
-            // Debug: save a copy for inspection
-            const debugCopyPath = path.join('d:/Dev/live_asset/tmp_debug', `output_${targetMajor}.${targetMinor}.json`);
-            try { await fs.writeFile(debugCopyPath, convertedJsonText, 'utf-8'); } catch(e) {}
+            // Debug logging disabled for production
 
             // Detailed logging
             console.log(`[SPINE CONVERT] Output file: ${generatedJsonFile}, size: ${convertedJsonText.length} bytes`);
