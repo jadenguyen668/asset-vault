@@ -84,6 +84,7 @@ export class SpineViewerEngine {
   private _capturingThumbnail = false;
   private _thumbnailMatteMode = false;
   private _thumbnailBoundsCanvas: HTMLCanvasElement | null = null;
+  private _setupPoseMode = false;
   private _dpr = window.devicePixelRatio || 1;
 
   constructor(container: HTMLElement) {
@@ -189,6 +190,24 @@ export class SpineViewerEngine {
       this.state.scale = 1;
       this.state.viewZoom = 1;
 
+      // Switch to Setup Pose for consistent thumbnail (instead of random animation frame)
+      const { skeleton, animState } = this.state;
+      // Save current track info to restore later
+      const savedTrack = animState.getCurrent(0);
+      const savedTrackTime = savedTrack ? savedTrack.trackTime : 0;
+      const savedTrackName = savedTrack?.animation?.name || null;
+
+      // Only reset bones (not slots) — preserves slot colors, blend modes, and FX fixes
+      skeleton.setBonesToSetupPose();
+      this._setupPoseMode = true;
+      if (this.state.runtimeVersion === '4.x') {
+        try {
+          skeleton.updateWorldTransform(this._spine4?.Physics?.update ?? this._spine4?.Physics?.none ?? 0 as any);
+        } catch { try { skeleton.updateWorldTransform(0 as any); } catch {} }
+      } else {
+        skeleton.updateWorldTransform();
+      }
+
       // Pass 1: Transparent render to find content bounds
       this._capturingThumbnail = true;
       if (this.state.runtimeVersion === '3.x') {
@@ -210,6 +229,22 @@ export class SpineViewerEngine {
         this.renderWebGL(0);
       }
       this._thumbnailMatteMode = false;
+
+      // Restore animation state after capture
+      this._setupPoseMode = false;
+      if (savedTrackName) {
+        animState.setAnimation(0, savedTrackName, savedTrack?.loop ?? true);
+        const restoredTrack = animState.getCurrent(0);
+        if (restoredTrack) restoredTrack.trackTime = savedTrackTime;
+        animState.apply(skeleton);
+        if (this.state.runtimeVersion === '4.x') {
+          try {
+            skeleton.updateWorldTransform(this._spine4?.Physics?.update ?? this._spine4?.Physics?.none ?? 0 as any);
+          } catch { try { skeleton.updateWorldTransform(0 as any); } catch {} }
+        } else {
+          skeleton.updateWorldTransform();
+        }
+      }
 
       // Restore user's view state
       this.state.scale = savedScale;
@@ -384,7 +419,7 @@ export class SpineViewerEngine {
     ctx2d.scale(this.state.baseScale * this.state.scale, -this.state.baseScale * this.state.scale);
     ctx2d.translate(-this.state.skeletonCenterX, -this.state.skeletonCenterY);
 
-    if (this.state.playing) {
+    if (this.state.playing && !this._setupPoseMode) {
       animState.update(delta * this.state.speed);
       if (this.state.speed < 0 && this.state.loop) {
         const track = animState.getCurrent(0);
@@ -399,7 +434,7 @@ export class SpineViewerEngine {
     const currentTime = track ? track.trackTime : 0;
     
     // Draw Ghosting (Canvas2D)
-    if (this.ghostingEnabled && track && this.state.playing) {
+    if (this.ghostingEnabled && track && this.state.playing && !this._setupPoseMode) {
       const numGhosts = 3;
       const interval = 0.05; // 50ms apart
       
@@ -422,8 +457,10 @@ export class SpineViewerEngine {
       skeleton.color.a = originalAlpha;
     }
 
-    animState.apply(skeleton);
-    skeleton.updateWorldTransform();
+    if (!this._setupPoseMode) {
+      animState.apply(skeleton);
+      skeleton.updateWorldTransform();
+    }
 
     try { this.state.renderer.draw(skeleton); } catch(e: any) {
       if (!this.renderErrorLogged) { this.renderErrorLogged = true; console.error('[RENDER-ERR]', e); }
@@ -477,7 +514,7 @@ export class SpineViewerEngine {
     // Advance skeleton internal time — required for Physics constraints in Spine 4.2+
     skeleton.update(delta);
 
-    if (this.state.playing) {
+    if (this.state.playing && !this._setupPoseMode) {
       animState.update(delta * this.state.speed);
       if (this.state.speed < 0 && this.state.loop) {
         const track = animState.getCurrent(0);
@@ -486,12 +523,14 @@ export class SpineViewerEngine {
         }
       }
     }
-    animState.apply(skeleton);
-
     const spine4 = this._spine4;
-    try {
-      skeleton.updateWorldTransform(spine4?.Physics?.update ?? spine4?.Physics?.none ?? 0 as any);
-    } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
+    if (!this._setupPoseMode) {
+      animState.apply(skeleton);
+
+      try {
+        skeleton.updateWorldTransform(spine4?.Physics?.update ?? spine4?.Physics?.none ?? 0 as any);
+      } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
+    }
 
     // Camera centers on canvas center
     this.state.renderer.camera.position.x = w / 2;
@@ -875,6 +914,87 @@ export class SpineViewerEngine {
     }
     const rendererCtx = this.state.ctx2d!;
     const stateRef = this.state;
+    // Off-screen canvas for RGB tinting (reused across calls)
+    let tintCanvas: HTMLCanvasElement | null = null;
+    let tintCtx: CanvasRenderingContext2D | null = null;
+
+    // Monkey-patch drawTriangles to store current slot tint color before triangle calls
+    const originalDrawTriangles = this.state.renderer.drawTriangles.bind(this.state.renderer);
+    this.state.renderer.drawTriangles = function (skeleton: any) {
+      const drawOrder = skeleton.drawOrder;
+      const ctx = (this as any).ctx;
+      const renderer = this as any;
+      let vertices: Float32Array | number[] = renderer.vertices;
+      const QUAD_TRIANGLES = [0, 1, 2, 2, 3, 0];
+
+      for (let i = 0, n = drawOrder.length; i < n; i++) {
+        const slot = drawOrder[i];
+        const attachment = slot.getAttachment();
+        let texture: any = null;
+        let region: any = null;
+        let triangles: number[] | null = null;
+
+        if (attachment instanceof (window as any).spine.RegionAttachment) {
+          vertices = renderer.computeRegionVertices(slot, attachment, false);
+          triangles = QUAD_TRIANGLES;
+          region = attachment.region;
+          texture = region.texture.getImage();
+        } else if (attachment instanceof (window as any).spine.MeshAttachment) {
+          vertices = renderer.computeMeshVertices(slot, attachment, false);
+          triangles = attachment.triangles;
+          texture = attachment.region.renderObject.texture.getImage();
+        } else {
+          continue;
+        }
+
+        if (texture != null) {
+          const skeletonColor = slot.bone.skeleton.color;
+          const slotColor = slot.color;
+          const attachmentColor = attachment.color;
+          const alpha = skeletonColor.a * slotColor.a * attachmentColor.a;
+          const color = renderer.tempColor;
+          color.set(
+            skeletonColor.r * slotColor.r * attachmentColor.r,
+            skeletonColor.g * slotColor.g * attachmentColor.g,
+            skeletonColor.b * slotColor.b * attachmentColor.b,
+            alpha
+          );
+
+          // Store tint for drawTriangle to use
+          renderer._currentTintR = color.r;
+          renderer._currentTintG = color.g;
+          renderer._currentTintB = color.b;
+
+          // Resolve blend mode
+          let slotBlendMode = slot.data.blendMode;
+          let blendModeNum = slotBlendMode;
+          if (typeof slotBlendMode === 'object' || typeof slotBlendMode === 'string') {
+            const bmStr = String(slotBlendMode).toLowerCase();
+            if (bmStr.indexOf('additive') >= 0 || bmStr === '1') blendModeNum = 1;
+            else if (bmStr.indexOf('multiply') >= 0 || bmStr === '2') blendModeNum = 2;
+            else if (bmStr.indexOf('screen') >= 0 || bmStr === '3') blendModeNum = 3;
+            else blendModeNum = 0;
+          }
+
+          ctx.globalAlpha = color.a;
+          if (blendModeNum === 1) ctx.globalCompositeOperation = "lighter";
+          else if (blendModeNum === 2) ctx.globalCompositeOperation = "multiply";
+          else if (blendModeNum === 3) ctx.globalCompositeOperation = "screen";
+          else ctx.globalCompositeOperation = "source-over";
+
+          for (let j = 0; j < triangles!.length; j += 3) {
+            const t1 = triangles![j] * 8, t2 = triangles![j + 1] * 8, t3 = triangles![j + 2] * 8;
+            const x0 = vertices[t1], y0 = vertices[t1 + 1], u0 = vertices[t1 + 6], v0 = vertices[t1 + 7];
+            const x1 = vertices[t2], y1 = vertices[t2 + 1], u1 = vertices[t2 + 6], v1 = vertices[t2 + 7];
+            const x2 = vertices[t3], y2 = vertices[t3 + 1], u2 = vertices[t3 + 6], v2 = vertices[t3 + 7];
+            renderer.drawTriangle(texture, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    };
+
     this.state.renderer.drawTriangle = function (img: any, x0: number, y0: number, u0: number, v0: number,
       x1: number, y1: number, u1: number, v1: number,
       x2: number, y2: number, u2: number, v2: number) {
@@ -901,9 +1021,43 @@ export class SpineViewerEngine {
       const c = (c1 * a2 - c2 * a1) * det, d = (c1 * b2 - c2 * b1) * det;
       const e = x0 - a * u0 - c * v0, f = y0 - b * u0 - d * v0;
       if (!isFinite(a) || !isFinite(b) || !isFinite(c) || !isFinite(d)) return;
-      rendererCtx.save(); rendererCtx.clip(); rendererCtx.transform(a, b, c, d, e, f);
-      rendererCtx.drawImage(img, 0, 0);
-      rendererCtx.restore();
+
+      // Check if tinting is needed (RGB != white)
+      const renderer = stateRef.renderer as any;
+      const tR = renderer._currentTintR ?? 1;
+      const tG = renderer._currentTintG ?? 1;
+      const tB = renderer._currentTintB ?? 1;
+      const needsTint = tR < 0.99 || tG < 0.99 || tB < 0.99;
+
+      if (needsTint) {
+        // Use off-screen canvas to apply RGB tint via multiply composite
+        const iw = img.width, ih = img.height;
+        if (!tintCanvas || tintCanvas.width < iw || tintCanvas.height < ih) {
+          tintCanvas = document.createElement('canvas');
+          tintCanvas.width = iw;
+          tintCanvas.height = ih;
+          tintCtx = tintCanvas.getContext('2d')!;
+        }
+        tintCtx!.clearRect(0, 0, iw, ih);
+        // Draw original texture
+        tintCtx!.globalCompositeOperation = 'source-over';
+        tintCtx!.drawImage(img, 0, 0);
+        // Multiply with tint color
+        tintCtx!.globalCompositeOperation = 'multiply';
+        tintCtx!.fillStyle = `rgb(${Math.round(tR * 255)}, ${Math.round(tG * 255)}, ${Math.round(tB * 255)})`;
+        tintCtx!.fillRect(0, 0, iw, ih);
+        // Restore alpha from original (multiply destroys transparent areas)
+        tintCtx!.globalCompositeOperation = 'destination-in';
+        tintCtx!.drawImage(img, 0, 0);
+
+        rendererCtx.save(); rendererCtx.clip(); rendererCtx.transform(a, b, c, d, e, f);
+        rendererCtx.drawImage(tintCanvas!, 0, 0);
+        rendererCtx.restore();
+      } else {
+        rendererCtx.save(); rendererCtx.clip(); rendererCtx.transform(a, b, c, d, e, f);
+        rendererCtx.drawImage(img, 0, 0);
+        rendererCtx.restore();
+      }
     };
 
     // Auto-fit: use actual bounds to scale+center content within canvas
