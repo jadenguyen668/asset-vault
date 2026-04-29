@@ -128,14 +128,24 @@ export async function getCharacter(id: number): Promise<Character | null> {
 }
 
 export async function deleteCharacter(id: number): Promise<void> {
-  const res = await fetch('/api/admin/delete-character', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Delete failed (${res.status})`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch('/api/admin/delete-character', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Delete failed (${res.status})`);
+    }
+  } catch (e: any) {
+    if (e.name === 'AbortError') throw new Error('Delete timed out — please refresh to check if it succeeded');
+    throw e;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

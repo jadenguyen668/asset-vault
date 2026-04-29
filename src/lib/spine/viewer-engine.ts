@@ -180,6 +180,15 @@ export class SpineViewerEngine {
     }
 
     if (this._captureResolve && this.state.canvas) {
+      // Save current view state
+      const savedScale = this.state.scale;
+      const savedOffsetX = this.state.offsetX;
+      const savedOffsetY = this.state.offsetY;
+      const savedViewZoom = this.state.viewZoom;
+      // Reset to auto-fit defaults so full content is visible on canvas
+      this.state.scale = 1;
+      this.state.viewZoom = 1;
+
       // Pass 1: Transparent render to find content bounds
       this._capturingThumbnail = true;
       if (this.state.runtimeVersion === '3.x') {
@@ -201,6 +210,12 @@ export class SpineViewerEngine {
         this.renderWebGL(0);
       }
       this._thumbnailMatteMode = false;
+
+      // Restore user's view state
+      this.state.scale = savedScale;
+      this.state.offsetX = savedOffsetX;
+      this.state.offsetY = savedOffsetY;
+      this.state.viewZoom = savedViewZoom;
 
       const cb = this._captureResolve;
       this._captureResolve = null;
