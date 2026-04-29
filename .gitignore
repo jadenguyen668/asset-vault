@@ -13,3 +13,7 @@ tsconfig.tsbuildinfo
 # reference assets
 reference/
 .vercel
+
+# PC build artifacts
+dist_pc/
+AssetVault-PC.zip
