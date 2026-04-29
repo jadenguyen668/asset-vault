@@ -39,6 +39,8 @@ interface ViewerState {
   animState: any;
   renderer: any;
   runtimeVersion: '3.x' | '4.x';
+  skeletonCenterX: number;
+  skeletonCenterY: number;
 }
 
 // Track loaded spine-canvas minor version globally (only one can be active)
@@ -117,6 +119,7 @@ export class SpineViewerEngine {
       lastTime: performance.now() / 1000,
       offsetX: 0, offsetY: 0,
       runtimeVersion: '3.x',
+      skeletonCenterX: 0, skeletonCenterY: 0,
     };
 
     this.renderLoop();
@@ -728,6 +731,8 @@ export class SpineViewerEngine {
     this.state.offsetX = 0;
     this.state.offsetY = 0;
     this.state.scale = 1;
+    this.state.skeletonCenterX = 0;
+    this.state.skeletonCenterY = 0;
 
     if (detectedMajor < 4) {
       await this.loadSpine3x(files, detectedMinor);
@@ -883,20 +888,16 @@ export class SpineViewerEngine {
       rendererCtx.restore();
     };
 
-    // Auto-fit: use actual skeleton bounds for reliable sizing and centering
-    // Origin is now at canvas center (w/2, h/2) with Y-flip
+    // Auto-fit: scale skeleton to fit canvas
+    // Origin at canvas center (w/2, h/2), Y-flip applied
     try {
-      const offset = new spine.Vector2(), size = new spine.Vector2();
-      skeleton.getBounds(offset, size, []);
-      let refH = size.y;
-      let refW = size.x;
-      let boundsX = offset.x;
-      let boundsY = offset.y;
-      if (!refH || refH <= 0 || !refW || refW <= 0) {
-        refH = skeletonData.height || 400;
-        refW = skeletonData.width || 400;
-        boundsX = 0;
-        boundsY = 0;
+      let refH = skeletonData.height || 0;
+      let refW = skeletonData.width || 0;
+      if (refH <= 0 || refW <= 0) {
+        const offset = new spine.Vector2(), size = new spine.Vector2();
+        skeleton.getBounds(offset, size, []);
+        refH = size.y || 400;
+        refW = size.x || 400;
       }
       const ch = this.state.canvas.height;
       const cw = this.state.canvas.width;
@@ -904,12 +905,8 @@ export class SpineViewerEngine {
       const scaleW = (cw * 0.8) / refW;
       this.state.baseScale = Math.min(scaleH, scaleW, 3);
       this.state.scale = 1;
-      // Center: offset so bounds center maps to skeleton origin (0,0)
-      // Canvas2D renders at (w/2+offsetX, h/2+offsetY) with scale+Y-flip
-      const boundsCenterX = boundsX + refW / 2;
-      const boundsCenterY = boundsY + refH / 2;
-      this.state.offsetX = -boundsCenterX * this.state.baseScale;
-      this.state.offsetY = boundsCenterY * this.state.baseScale;
+      this.state.offsetX = 0;
+      this.state.offsetY = 0;
     } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 
     const stateData = new spine.AnimationStateData(skeletonData);
@@ -1055,19 +1052,15 @@ export class SpineViewerEngine {
       skeleton.updateWorldTransform(spine4?.Physics?.update ?? spine4?.Physics?.none ?? 0 as any);
     } catch { try { skeleton.updateWorldTransform(0 as any); } catch { /* ignore */ } }
 
-    // Auto-fit: use actual skeleton bounds for reliable sizing and centering
-    // Origin is now at canvas center (w/2, h/2) with Y-up
+    // Auto-fit: scale skeleton to fit canvas
+    // Origin at canvas center (w/2, h/2), Y-up
     try {
-      const bounds = skeleton.getBoundsRect();
-      let refH = bounds.height;
-      let refW = bounds.width;
-      let boundsX = bounds.x;
-      let boundsY = bounds.y;
-      if (!refH || refH <= 0 || !refW || refW <= 0) {
-        refH = skeletonData.height || 400;
-        refW = skeletonData.width || 400;
-        boundsX = 0;
-        boundsY = 0;
+      let refH = skeletonData.height || 0;
+      let refW = skeletonData.width || 0;
+      if (refH <= 0 || refW <= 0) {
+        const bounds = skeleton.getBoundsRect();
+        refH = bounds.height || 400;
+        refW = bounds.width || 400;
       }
       const ch = this.state.canvas.height;
       const cw = this.state.canvas.width;
@@ -1075,12 +1068,8 @@ export class SpineViewerEngine {
       const scaleW = (cw * 0.8) / refW;
       this.state.baseScale = Math.min(scaleH, scaleW, 3);
       this.state.scale = 1;
-      // Center: offset so bounds center maps to skeleton origin (0,0)
-      // WebGL renders skeleton at (w/2+offsetX, h/2-offsetY)
-      const boundsCenterX = boundsX + refW / 2;
-      const boundsCenterY = boundsY + refH / 2;
-      this.state.offsetX = -boundsCenterX * this.state.baseScale;
-      this.state.offsetY = boundsCenterY * this.state.baseScale;
+      this.state.offsetX = 0;
+      this.state.offsetY = 0;
     } catch { this.state.baseScale = 0.5; this.state.scale = 1; }
 
     const stateData = new spine4.AnimationStateData(skeletonData);
