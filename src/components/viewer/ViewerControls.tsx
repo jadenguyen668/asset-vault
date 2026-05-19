@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRef } from 'react';
 import { Play, Pause, RotateCcw, Repeat, ZoomIn, ZoomOut, Image as ImageIcon, ImageOff, Rewind } from 'lucide-react';
 import type { SpineViewerHandle } from './SpineViewer';
+import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
 
 const AVAILABLE_VERSIONS = [
   { value: '4.2', label: 'Spine 4.2', major: 4, minor: 2 },
@@ -359,6 +360,26 @@ export function ViewerControls({ viewerRef, animations, skins, bones = [], compa
             ...v,
             isUpgrade: v.major > curMajor || (v.major === curMajor && v.minor > curMinor)
           }));
+          if (!SPINE_CONVERT_ENABLED) {
+            return (
+              <div className="control-group mt-2">
+                <label className="control-label">Export</label>
+                <div className="flex gap-1 w-full">
+                  <div className="control-select flex-1" style={{ display: 'flex', alignItems: 'center' }}>
+                    Original only (convert disabled)
+                  </div>
+                  <button
+                    onClick={() => onExportBundle(undefined)}
+                    className="control-btn"
+                    title="Download release bundle"
+                    style={{ width: '32px', flexShrink: 0, background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' }}
+                  >
+                    <span>â¬‡ï¸</span>
+                  </button>
+                </div>
+              </div>
+            );
+          }
           return (
             <div className="control-group mt-2">
               <label className="control-label">Tải Tích Hợp (Export)</label>

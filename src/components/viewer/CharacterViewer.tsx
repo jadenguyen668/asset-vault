@@ -9,6 +9,7 @@ import { Loader2, ArrowLeft, Bone, Film, Layers } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { updatePreviewConfig } from '@/lib/db/characters';
 import { downloadAsZip, type RuntimeMetaConfig } from '@/lib/export/meta-config';
+import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
 
 interface Props {
   character: Character;
@@ -104,14 +105,15 @@ export function CharacterViewer({ character }: Props) {
     try {
       let finalJsonText = spineFiles.jsonText;
       let finalSpineVersion = character.spine_version;
+      const requestedVersion = SPINE_CONVERT_ENABLED ? targetVersion : undefined;
 
-      if (targetVersion && targetVersion !== 'current' && !character.spine_version.startsWith(targetVersion)) {
+      if (requestedVersion && requestedVersion !== 'current' && !character.spine_version.startsWith(requestedVersion)) {
         const response = await fetch('/api/convert-spine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             jsonText: spineFiles.jsonText, 
-            targetVersion: targetVersion 
+            targetVersion: requestedVersion 
           })
         });
 
@@ -123,7 +125,7 @@ export function CharacterViewer({ character }: Props) {
         const data = await response.json();
         if (data.success && data.jsonText) {
           finalJsonText = data.jsonText;
-          finalSpineVersion = data.newVersion || targetVersion;
+          finalSpineVersion = data.newVersion || requestedVersion;
           if (data.warning) {
             alert(data.warning);
           }

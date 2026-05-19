@@ -6,6 +6,7 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 import os from 'os';
 import { bakePhysics } from '@/lib/spine/physics-baker';
+import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,6 +22,13 @@ const DEFAULT_EXPORT_JSON = {
 
 export async function POST(req: Request) {
     try {
+        if (!SPINE_CONVERT_ENABLED) {
+            return NextResponse.json(
+                { error: 'Spine version conversion is disabled in this deployment.' },
+                { status: 403 }
+            );
+        }
+
         const { jsonText, targetVersion } = await req.json();
 
         if (!jsonText || !targetVersion) {

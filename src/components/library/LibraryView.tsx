@@ -20,6 +20,7 @@ import { createClient } from '@/lib/supabase/client';
 import { saveCharacter, deleteCharacter, updatePreviewConfig } from '@/lib/db/characters';
 import { downloadAsZip, type RuntimeMetaConfig } from '@/lib/export/meta-config';
 import { useRouter } from 'next/navigation';
+import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
 
 interface Props {
   initialCharacters: Character[];
@@ -93,14 +94,15 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     try {
       let finalJsonText = previewFiles.jsonText;
       let finalSpineVersion = selectedChar.spine_version;
+      const requestedVersion = SPINE_CONVERT_ENABLED ? targetVersion : undefined;
 
-      if (targetVersion && targetVersion !== 'current' && !selectedChar.spine_version.startsWith(targetVersion)) {
+      if (requestedVersion && requestedVersion !== 'current' && !selectedChar.spine_version.startsWith(requestedVersion)) {
         const response = await fetch('/api/convert-spine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             jsonText: previewFiles.jsonText, 
-            targetVersion: targetVersion 
+            targetVersion: requestedVersion 
           })
         });
 
@@ -112,7 +114,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         const data = await response.json();
         if (data.success && data.jsonText) {
           finalJsonText = data.jsonText;
-          finalSpineVersion = data.newVersion || targetVersion;
+          finalSpineVersion = data.newVersion || requestedVersion;
           if (data.warning) {
             alert(data.warning);
           }
