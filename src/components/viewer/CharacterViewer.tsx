@@ -43,11 +43,11 @@ export function CharacterViewer({ character }: Props) {
         let atlasText = character.atlas_text;
 
         if (!jsonText && character.json_path) {
-          const blob = await downloadFile(character.json_path);
+          const blob = await downloadFile(character.json_path, character.user_id);
           jsonText = await blob.text();
         }
         if (!atlasText && character.atlas_path) {
-          const blob = await downloadFile(character.atlas_path);
+          const blob = await downloadFile(character.atlas_path, character.user_id);
           atlasText = await blob.text();
         }
 
@@ -56,7 +56,7 @@ export function CharacterViewer({ character }: Props) {
           await Promise.all(
             character.png_paths.map(async (path) => {
               try {
-                const blob = await downloadFile(path);
+                const blob = await downloadFile(path, character.user_id);
                 pngBlobs.set(path.split('/').pop() || path, blob);
               } catch (e) {
                 console.warn('Failed to fetch PNG:', path, e);

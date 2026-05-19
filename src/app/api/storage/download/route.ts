@@ -14,7 +14,9 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { path } = await request.json();
-  const token = signToken({ sub: user.id, path, action: 'download' });
-  const url = `${process.env.R2_WORKER_URL}/download/${path}?token=${token}`;
+  const normalizedPath = String(path || '').split('/').filter(Boolean).join('/');
+  const token = signToken({ sub: user.id, path: normalizedPath, action: 'download' });
+  const encodedPath = normalizedPath.split('/').map(encodeURIComponent).join('/');
+  const url = `${process.env.R2_WORKER_URL}/download/${encodedPath}?token=${token}`;
   return NextResponse.json({ url });
 }

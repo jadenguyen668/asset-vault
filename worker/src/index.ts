@@ -111,7 +111,10 @@ export default {
           return new Response('Invalid token', { status: 403, headers: corsHeaders() });
         }
 
-        const key = path.replace('/download/', '');
+        const key = decodeURIComponent(path.replace('/download/', ''));
+        if (payload.path && payload.path !== key) {
+          return new Response('Path mismatch', { status: 403, headers: corsHeaders() });
+        }
         const object = await env.ASSETS_BUCKET.get(key);
 
         if (!object) {

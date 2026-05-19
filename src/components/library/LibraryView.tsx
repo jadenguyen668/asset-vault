@@ -222,12 +222,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       let atlasText = fullChar.atlas_text;
 
       if (!jsonText && fullChar.json_path) {
-        const blob = await downloadFile(fullChar.json_path);
+        const blob = await downloadFile(fullChar.json_path, fullChar.user_id);
         if (requestId !== previewRequestRef.current) return;
         jsonText = await blob.text();
       }
       if (!atlasText && fullChar.atlas_path) {
-        const blob = await downloadFile(fullChar.atlas_path);
+        const blob = await downloadFile(fullChar.atlas_path, fullChar.user_id);
         if (requestId !== previewRequestRef.current) return;
         atlasText = await blob.text();
       }
@@ -249,7 +249,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 pngBlobs.set(filename, new Blob([bytes], { type: 'image/png' }));
               } else {
                 // R2 path
-                const blob = await downloadFile(path);
+                const blob = await downloadFile(path, fullChar.user_id);
                 const filename = path.split('/').pop() || path;
                 pngBlobs.set(filename, blob);
               }

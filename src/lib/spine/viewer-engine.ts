@@ -543,7 +543,7 @@ export class SpineViewerEngine {
     // Reset batcher blend to Normal before BG draw to prevent blend contamination
     const batcher = (this.state.renderer as any).batcher;
     if (batcher) {
-      batcher.srcColorBlend = gl.SRC_ALPHA;
+      batcher.srcColorBlend = gl.ONE;
       batcher.srcAlphaBlend = gl.ONE;
       batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
     }
@@ -674,12 +674,12 @@ export class SpineViewerEngine {
         
         // Reset batcher before ghost draw
         if (batcher) {
-          batcher.srcColorBlend = gl.SRC_ALPHA;
+          batcher.srcColorBlend = gl.ONE;
           batcher.srcAlphaBlend = gl.ONE;
           batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
         }
         this.state.renderer.begin();
-        try { this.state.renderer.drawSkeleton(skeleton, false); } catch(e) {}
+        try { this.state.renderer.drawSkeleton(skeleton, true); } catch(e) {}
         this.state.renderer.end();
       }
       
@@ -694,20 +694,20 @@ export class SpineViewerEngine {
 
     // Reset batcher to Normal blend before skeleton draw
     if (batcher) {
-      batcher.srcColorBlend = gl.SRC_ALPHA;
+      batcher.srcColorBlend = gl.ONE;
       batcher.srcAlphaBlend = gl.ONE;
       batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
     }
 
     this.state.renderer.begin();
-    try { this.state.renderer.drawSkeleton(skeleton, false); } catch(e: any) {
+    try { this.state.renderer.drawSkeleton(skeleton, true); } catch(e: any) {
       if (!this.renderErrorLogged) { this.renderErrorLogged = true; console.error('[RENDER-ERR]', e); }
     }
     this.state.renderer.end();
 
     // Force-reset batcher after skeleton draw for next frame
     if (batcher) {
-      batcher.srcColorBlend = gl.SRC_ALPHA;
+      batcher.srcColorBlend = gl.ONE;
       batcher.srcAlphaBlend = gl.ONE;
       batcher.dstBlend = gl.ONE_MINUS_SRC_ALPHA;
     }
@@ -917,6 +917,63 @@ export class SpineViewerEngine {
     // Off-screen canvas for RGB tinting (reused across calls)
     let tintCanvas: HTMLCanvasElement | null = null;
     let tintCtx: CanvasRenderingContext2D | null = null;
+    let blendCanvas: HTMLCanvasElement | null = null;
+    let blendCtx: CanvasRenderingContext2D | null = null;
+    const tintCache = new Map<string, HTMLCanvasElement>();
+
+    const getTintedImage = (img: CanvasImageSource & { width: number; height: number }, r: number, g: number, b: number) => {
+      const key = `${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${img.width},${img.height}`;
+      const cached = tintCache.get(key);
+      if (cached) return cached;
+      const tc = document.createElement('canvas');
+      tc.width = img.width;
+      tc.height = img.height;
+      const tctx = tc.getContext('2d')!;
+      tctx.globalCompositeOperation = 'source-over';
+      tctx.drawImage(img, 0, 0);
+      tctx.globalCompositeOperation = 'multiply';
+      tctx.fillStyle = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+      tctx.fillRect(0, 0, tc.width, tc.height);
+      tctx.globalCompositeOperation = 'destination-in';
+      tctx.drawImage(img, 0, 0);
+      tintCache.set(key, tc);
+      return tc;
+    };
+
+    const drawTriangleToContext = (
+      targetCtx: CanvasRenderingContext2D,
+      img: CanvasImageSource & { width: number; height: number },
+      x0: number, y0: number, u0: number, v0: number,
+      x1: number, y1: number, u1: number, v1: number,
+      x2: number, y2: number, u2: number, v2: number,
+    ) => {
+      u0 *= img.width; v0 *= img.height;
+      u1 *= img.width; v1 *= img.height;
+      u2 *= img.width; v2 *= img.height;
+      const _du1 = u1 - u0, _dv1 = v1 - v0, _du2 = u2 - u0, _dv2 = v2 - v0;
+      const uvDet = _du1 * _dv2 - _du2 * _dv1;
+      if (Math.abs(uvDet) < 1e-6) return;
+      const cx = (x0 + x1 + x2) / 3, cy = (y0 + y1 + y2) / 3;
+      const globalScale = Math.abs((stateRef?.baseScale ?? 1) * (stateRef?.scale ?? 1) * (stateRef?.viewZoom ?? 1));
+      const expand = 0.4 / globalScale;
+      const ex0 = x0 + (x0 - cx) * expand / Math.max(1, Math.hypot(x0 - cx, y0 - cy));
+      const ey0 = y0 + (y0 - cy) * expand / Math.max(1, Math.hypot(x0 - cx, y0 - cy));
+      const ex1 = x1 + (x1 - cx) * expand / Math.max(1, Math.hypot(x1 - cx, y1 - cy));
+      const ey1 = y1 + (y1 - cy) * expand / Math.max(1, Math.hypot(x1 - cx, y1 - cy));
+      const ex2 = x2 + (x2 - cx) * expand / Math.max(1, Math.hypot(x2 - cx, y2 - cy));
+      const ey2 = y2 + (y2 - cy) * expand / Math.max(1, Math.hypot(x2 - cx, y2 - cy));
+      targetCtx.beginPath(); targetCtx.moveTo(ex0, ey0); targetCtx.lineTo(ex1, ey1); targetCtx.lineTo(ex2, ey2); targetCtx.closePath();
+      const a1 = x1 - x0, b1 = y1 - y0, a2 = x2 - x0, b2 = y2 - y0;
+      const c1 = u1 - u0, d1 = v1 - v0, c2 = u2 - u0, d2 = v2 - v0;
+      const det = 1 / (c1 * d2 - c2 * d1);
+      const a = (d2 * a1 - d1 * a2) * det, b = (d2 * b1 - d1 * b2) * det;
+      const c = (c1 * a2 - c2 * a1) * det, d = (c1 * b2 - c2 * b1) * det;
+      const e = x0 - a * u0 - c * v0, f = y0 - b * u0 - d * v0;
+      if (!isFinite(a) || !isFinite(b) || !isFinite(c) || !isFinite(d)) return;
+      targetCtx.save(); targetCtx.clip(); targetCtx.transform(a, b, c, d, e, f);
+      targetCtx.drawImage(img, 0, 0);
+      targetCtx.restore();
+    };
 
     // Monkey-patch drawTriangles to store current slot tint color before triangle calls
     const originalDrawTriangles = this.state.renderer.drawTriangles.bind(this.state.renderer);
@@ -976,18 +1033,54 @@ export class SpineViewerEngine {
             else blendModeNum = 0;
           }
 
-          ctx.globalAlpha = color.a;
-          if (blendModeNum === 1) ctx.globalCompositeOperation = "lighter";
-          else if (blendModeNum === 2) ctx.globalCompositeOperation = "multiply";
-          else if (blendModeNum === 3) ctx.globalCompositeOperation = "screen";
-          else ctx.globalCompositeOperation = "source-over";
+          if (blendModeNum !== 0) {
+            if (!blendCanvas) {
+              blendCanvas = document.createElement('canvas');
+              blendCtx = blendCanvas.getContext('2d')!;
+            }
+            if (blendCanvas.width !== ctx.canvas.width || blendCanvas.height !== ctx.canvas.height) {
+              blendCanvas.width = ctx.canvas.width;
+              blendCanvas.height = ctx.canvas.height;
+            }
 
-          for (let j = 0; j < triangles!.length; j += 3) {
-            const t1 = triangles![j] * 8, t2 = triangles![j + 1] * 8, t3 = triangles![j + 2] * 8;
-            const x0 = vertices[t1], y0 = vertices[t1 + 1], u0 = vertices[t1 + 6], v0 = vertices[t1 + 7];
-            const x1 = vertices[t2], y1 = vertices[t2 + 1], u1 = vertices[t2 + 6], v1 = vertices[t2 + 7];
-            const x2 = vertices[t3], y2 = vertices[t3 + 1], u2 = vertices[t3 + 6], v2 = vertices[t3 + 7];
-            renderer.drawTriangle(texture, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
+            blendCtx!.setTransform(1, 0, 0, 1, 0, 0);
+            blendCtx!.globalAlpha = 1;
+            blendCtx!.globalCompositeOperation = 'source-over';
+            blendCtx!.clearRect(0, 0, blendCanvas.width, blendCanvas.height);
+            blendCtx!.setTransform(ctx.getTransform());
+
+            const drawTexture =
+              renderer._currentTintR < 0.99 || renderer._currentTintG < 0.99 || renderer._currentTintB < 0.99
+                ? getTintedImage(texture, renderer._currentTintR, renderer._currentTintG, renderer._currentTintB)
+                : texture;
+
+            for (let j = 0; j < triangles!.length; j += 3) {
+              const t1 = triangles![j] * 8, t2 = triangles![j + 1] * 8, t3 = triangles![j + 2] * 8;
+              const x0 = vertices[t1], y0 = vertices[t1 + 1], u0 = vertices[t1 + 6], v0 = vertices[t1 + 7];
+              const x1 = vertices[t2], y1 = vertices[t2 + 1], u1 = vertices[t2 + 6], v1 = vertices[t2 + 7];
+              const x2 = vertices[t3], y2 = vertices[t3 + 1], u2 = vertices[t3 + 6], v2 = vertices[t3 + 7];
+              drawTriangleToContext(blendCtx!, drawTexture, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
+            }
+
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.globalAlpha = color.a;
+            if (blendModeNum === 1) ctx.globalCompositeOperation = "lighter";
+            else if (blendModeNum === 2) ctx.globalCompositeOperation = "multiply";
+            else ctx.globalCompositeOperation = "screen";
+            ctx.drawImage(blendCanvas, 0, 0);
+            ctx.restore();
+          } else {
+            ctx.globalAlpha = color.a;
+            ctx.globalCompositeOperation = "source-over";
+
+            for (let j = 0; j < triangles!.length; j += 3) {
+              const t1 = triangles![j] * 8, t2 = triangles![j + 1] * 8, t3 = triangles![j + 2] * 8;
+              const x0 = vertices[t1], y0 = vertices[t1 + 1], u0 = vertices[t1 + 6], v0 = vertices[t1 + 7];
+              const x1 = vertices[t2], y1 = vertices[t2 + 1], u1 = vertices[t2 + 6], v1 = vertices[t2 + 7];
+              const x2 = vertices[t3], y2 = vertices[t3 + 1], u2 = vertices[t3 + 6], v2 = vertices[t3 + 7];
+              renderer.drawTriangle(texture, x0, y0, u0, v0, x1, y1, u1, v1, x2, y2, u2, v2);
+            }
           }
         }
       }
@@ -1103,10 +1196,9 @@ export class SpineViewerEngine {
     this._spine4 = spine4;
     this.state.runtimeVersion = '4.x';
 
-    // CRITICAL: Disable premultiplied alpha on GL textures
-    // GLTexture premultiplies by default, but drawSkeleton(skel, false) expects straight alpha
-    // Mismatch causes black rectangles around semi-transparent/additive blend areas
-    (spine4 as any).GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = true;
+    // Multiply slots leak transparent-edge RGB unless textures are uploaded as premultiplied alpha.
+    // Keep upload and render path aligned: PMA upload + drawSkeleton(..., true) + ONE blending.
+    (spine4 as any).GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = false;
 
     if (!this.state.gl) {
       const glConfig: WebGLContextAttributes = { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true };
@@ -1114,6 +1206,7 @@ export class SpineViewerEngine {
     }
     const gl = this.state.gl;
     if (!gl) throw new Error('WebGL not supported');
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 
     if (!this.state.renderer) this.state.renderer = new spine4.SceneRenderer(this.state.canvas, gl);
 
