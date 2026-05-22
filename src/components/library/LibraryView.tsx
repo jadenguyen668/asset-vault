@@ -17,7 +17,7 @@ import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOp
 import { ImportDialog, type ImportResult } from './ImportDialog';
 import { uploadSpineFiles } from '@/lib/storage/r2';
 import { createClient } from '@/lib/supabase/client';
-import { saveCharacter, deleteCharacter, updatePreviewConfig } from '@/lib/db/characters';
+import { deleteCharacter, updatePreviewConfig } from '@/lib/db/characters';
 import { downloadAsZip, type RuntimeMetaConfig } from '@/lib/export/meta-config';
 import { useRouter } from 'next/navigation';
 import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
@@ -402,17 +402,32 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
     try {
       console.time('[IMPORT] Total');
-      const supabase = createClient();
       let projectId = result.projectId;
+
+      const postJson = async <T,>(url: string, body: unknown, fallbackMessage: string): Promise<T> => {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || fallbackMessage);
+        }
+
+        return data as T;
+      };
       
       // If there's a new project created from ImportDialog, save it first
       if (result.newProject) {
         console.log('[IMPORT] Creating new project...');
-        const { data: projData, error: projErr } = await supabase.from('projects').insert([
-          { code: result.newProject.code, name: result.newProject.name, color: result.newProject.color }
-        ]).select('id').single();
-        if (projData) projectId = projData.id;
-        if (projErr) console.error('[IMPORT] Project create error:', projErr);
+        const project = await postJson<{ id: number }>(
+          '/api/library/project',
+          result.newProject,
+          'Failed to create project'
+        );
+        projectId = project.id;
       }
 
       for (const item of result.selectedItems) {
@@ -452,7 +467,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         };
         
         console.time('[IMPORT] saveCharacter');
-        const charId = await saveCharacter(charData);
+        const saved = await postJson<{ id: number }>(
+          '/api/library/save-character',
+          { char: charData },
+          'Failed to save character'
+        );
+        const charId = saved.id;
         console.timeEnd('[IMPORT] saveCharacter');
         console.log('[IMPORT] Saved charId:', charId);
 
@@ -463,7 +483,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
            const atlasBlob = new Blob([item.spineSet.spineFiles.atlasText]);
            const pngs = Array.from(item.spineSet.spineFiles.pngBlobs.entries()).map(([n, b]) => ({ name: n, blob: b }));
            const paths = await uploadSpineFiles(charId, jsonBlob, atlasBlob, pngs, item.spineSet.spineFiles.jsonName);
-           await supabase.from('characters').update({ json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths }).eq('id', charId);
+           await postJson(
+             '/api/library/character-assets',
+             { id: charId, updates: { json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths } },
+             'Failed to save storage paths'
+           );
            console.timeEnd('[IMPORT] R2 upload');
         } catch(e) {
            console.warn('[IMPORT] R2 upload failed, falling back to base64', e);
@@ -486,7 +510,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                }
            }
            if (base64Paths.length > 0) {
-              await supabase.from('characters').update({ png_paths: base64Paths }).eq('id', charId);
+              await postJson(
+                '/api/library/character-assets',
+                { id: charId, updates: { png_paths: base64Paths } },
+                'Failed to save fallback PNG data'
+              );
            }
            console.timeEnd('[IMPORT] base64 fallback');
         }
