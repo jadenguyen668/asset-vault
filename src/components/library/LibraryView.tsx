@@ -202,18 +202,18 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       // Lazy fetch full character details if this is lightweight data (no json_text/atlas_text)
       let fullChar = char;
       if (!(char as any)._fullLoaded) {
-         const supabase = createClient();
-         const { data, error } = await supabase.from('characters').select('json_text, atlas_text, png_paths, json_path, atlas_path').eq('id', char.id).single();
-         if (data) {
+         const response = await fetch(`/api/library/character/${char.id}`, { cache: 'no-store' });
+         const payload = await response.json().catch(() => ({}));
+         if (response.ok && payload.character) {
             if (requestId !== previewRequestRef.current) return;
-            fullChar = { ...char, ...data, _fullLoaded: true } as any;
+            fullChar = { ...char, ...payload.character, _fullLoaded: true } as any;
             // Update local state so we don't refetch on subsequent clicks
-            setLocalCharacters(prev => prev.map(c => c.id === char.id ? { ...c, ...data, _fullLoaded: true } as any : c));
+            setLocalCharacters(prev => prev.map(c => c.id === char.id ? { ...c, ...payload.character, _fullLoaded: true } as any : c));
             setSelectedChar(fullChar);
          } else {
             if (requestId !== previewRequestRef.current) return;
-            console.warn('[PREVIEW] Failed to fetch full character data', error);
-            setPreviewError('Failed to load character data from database.');
+            console.warn('[PREVIEW] Failed to fetch full character data', payload);
+            setPreviewError(payload.error || 'Failed to load character data from database.');
             setLoadingChar(false);
             return;
          }
