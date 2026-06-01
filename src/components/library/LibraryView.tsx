@@ -13,13 +13,15 @@ import type { Character, Project, Collection } from '@/types/database';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 import { downloadFile } from '@/lib/storage/r2';
 import { ViewerProperties } from '@/components/viewer/ViewerProperties';
-import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save, LayoutGrid, LayoutPanelLeft } from 'lucide-react';
+import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save, LayoutGrid, LayoutPanelLeft, Camera } from 'lucide-react';
 import { ImportDialog, type ImportResult } from './ImportDialog';
 import { uploadSpineFiles } from '@/lib/storage/r2';
 import { createClient } from '@/lib/supabase/client';
-import { saveCharacter, deleteCharacter, updatePreviewConfig } from '@/lib/db/characters';
+import { deleteCharacter, updatePreviewConfig, updateThumbnail } from '@/lib/db/characters';
 import { downloadAsZip, type RuntimeMetaConfig } from '@/lib/export/meta-config';
 import { useRouter } from 'next/navigation';
+import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
+import { isSpineSkeletonFilename, SPINE_IMPORT_ACCEPT } from '@/lib/spine/file-utils';
 
 interface Props {
   initialCharacters: Character[];
@@ -27,10 +29,25 @@ interface Props {
   initialCollections: Collection[];
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export function LibraryView({ initialCharacters, initialProjects, initialCollections }: Props) {
   useAuth();
 
   const viewerRef = useRef<SpineViewerHandle>(null);
+  const hiddenFolderInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
   const [activeSets, setActiveSets] = useState<ParsedSpineSet[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -61,6 +78,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [globalBgImage, setGlobalBgImage] = useState<HTMLImageElement | null>(null);
   const globalBgConfigRef = useRef<{ image: HTMLImageElement | null, offsetX: number, offsetY: number, scale: number }>({ image: null, offsetX: 0, offsetY: 0, scale: 1 });
   const globalPlaybackConfigRef = useRef<{ speed: number; scale: number; playing: boolean; looping: boolean; reversing: boolean }>({ speed: 1, scale: 1, playing: true, looping: true, reversing: false });
+  const previewRequestRef = useRef(0);
+  const activePreviewCharIdRef = useRef<number | null>(null);
 
   const handleBgImageChange = useCallback((img: HTMLImageElement | null) => {
     globalBgConfigRef.current.image = img;
@@ -83,6 +102,15 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   }, [selectedChar]);
 
   const [isExporting, setIsExporting] = useState(false);
+  const [isUpdatingThumbnail, setIsUpdatingThumbnail] = useState(false);
+
+  const getSpineImportError = useCallback((files: File[]) => {
+    const hasSkeleton = files.some((file) => isSpineSkeletonFilename(file.name));
+    if (!hasSkeleton) {
+      return 'No supported Spine skeleton file found. Use .json, .spine-json, or .skel.';
+    }
+    return 'Preview needs the full Spine set: skeleton (.json or .spine-json) + .atlas + referenced .png textures.';
+  }, []);
 
   const handleExportBundle = useCallback(async (targetVersion?: string) => {
     if (!previewFiles || !selectedChar) return;
@@ -91,14 +119,15 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     try {
       let finalJsonText = previewFiles.jsonText;
       let finalSpineVersion = selectedChar.spine_version;
+      const requestedVersion = SPINE_CONVERT_ENABLED ? targetVersion : undefined;
 
-      if (targetVersion && targetVersion !== 'current' && !selectedChar.spine_version.startsWith(targetVersion)) {
+      if (requestedVersion && requestedVersion !== 'current' && !selectedChar.spine_version.startsWith(requestedVersion)) {
         const response = await fetch('/api/convert-spine', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             jsonText: previewFiles.jsonText, 
-            targetVersion: targetVersion 
+            targetVersion: requestedVersion 
           })
         });
 
@@ -110,7 +139,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         const data = await response.json();
         if (data.success && data.jsonText) {
           finalJsonText = data.jsonText;
-          finalSpineVersion = data.newVersion || targetVersion;
+          finalSpineVersion = data.newVersion || requestedVersion;
           if (data.warning) {
             alert(data.warning);
           }
@@ -169,6 +198,9 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
   // Handle card click -> load character in preview (fetch PNGs from R2)
   const handleCardClick = useCallback(async (char: Character) => {
+    const requestId = ++previewRequestRef.current;
+    activePreviewCharIdRef.current = char.id;
+
     // Reset playback config to defaults IMMEDIATELY before any async work
     // so ViewerControls reads 1.0 when it remounts due to key change
     globalPlaybackConfigRef.current.speed = 1;
@@ -181,6 +213,10 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setPreviewCollapsed(false);
     setLoadingChar(true);
     setPreviewError(null);
+    setPreviewFiles(null);
+    setPreviewName(char.name);
+    setPreviewMajor(char.major_version);
+    setPreviewMinor(char.minor_version);
     // Use anim_names from DB immediately so Grid Mode has correct data
     setAnimations(char.anim_names || []);
     setTargetAnimation(null);
@@ -191,16 +227,18 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       // Lazy fetch full character details if this is lightweight data (no json_text/atlas_text)
       let fullChar = char;
       if (!(char as any)._fullLoaded) {
-         const supabase = createClient();
-         const { data, error } = await supabase.from('characters').select('json_text, atlas_text, png_paths, json_path, atlas_path').eq('id', char.id).single();
-         if (data) {
-            fullChar = { ...char, ...data, _fullLoaded: true } as any;
+         const response = await fetch(`/api/library/character/${char.id}`, { cache: 'no-store' });
+         const payload = await response.json().catch(() => ({}));
+         if (response.ok && payload.character) {
+            if (requestId !== previewRequestRef.current) return;
+            fullChar = { ...char, ...payload.character, _fullLoaded: true } as any;
             // Update local state so we don't refetch on subsequent clicks
-            setLocalCharacters(prev => prev.map(c => c.id === char.id ? { ...c, ...data, _fullLoaded: true } as any : c));
+            setLocalCharacters(prev => prev.map(c => c.id === char.id ? { ...c, ...payload.character, _fullLoaded: true } as any : c));
             setSelectedChar(fullChar);
          } else {
-            console.warn('[PREVIEW] Failed to fetch full character data', error);
-            setPreviewError('Failed to load character data from database.');
+            if (requestId !== previewRequestRef.current) return;
+            console.warn('[PREVIEW] Failed to fetch full character data', payload);
+            setPreviewError(payload.error || 'Failed to load character data from database.');
             setLoadingChar(false);
             return;
          }
@@ -211,11 +249,13 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       let atlasText = fullChar.atlas_text;
 
       if (!jsonText && fullChar.json_path) {
-        const blob = await downloadFile(fullChar.json_path);
+        const blob = await downloadFile(fullChar.json_path, fullChar.user_id);
+        if (requestId !== previewRequestRef.current) return;
         jsonText = await blob.text();
       }
       if (!atlasText && fullChar.atlas_path) {
-        const blob = await downloadFile(fullChar.atlas_path);
+        const blob = await downloadFile(fullChar.atlas_path, fullChar.user_id);
+        if (requestId !== previewRequestRef.current) return;
         atlasText = await blob.text();
       }
 
@@ -236,7 +276,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                 pngBlobs.set(filename, new Blob([bytes], { type: 'image/png' }));
               } else {
                 // R2 path
-                const blob = await downloadFile(path);
+                const blob = await downloadFile(path, fullChar.user_id);
                 const filename = path.split('/').pop() || path;
                 pngBlobs.set(filename, blob);
               }
@@ -246,6 +286,8 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           })
         );
       }
+
+      if (requestId !== previewRequestRef.current) return;
 
       if (!jsonText) {
         setPreviewError('No skeleton data available for this character.');
@@ -264,16 +306,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       setPreviewMinor(fullChar.minor_version);
       setPreviewName(fullChar.name);
     } catch (e: any) {
+      if (requestId !== previewRequestRef.current) return;
       console.error('[PREVIEW] Error loading character:', e);
       setPreviewError(e?.message || 'Failed to load character assets');
     } finally {
-      setLoadingChar(false);
+      if (requestId === previewRequestRef.current) setLoadingChar(false);
     }
   }, []);
 
   // Handle drag-drop files -> preview directly
   const handleFilesLoaded = useCallback((sets: ParsedSpineSet[]) => {
     if (sets.length === 0) return;
+    previewRequestRef.current += 1;
+    activePreviewCharIdRef.current = null;
     setActiveSets(sets);
     const first = sets[0];
     setPreviewFiles(first.spineFiles);
@@ -288,11 +333,13 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const [skelInfo, setSkelInfo] = useState<{ bones: number; slots: number; anims: number; skins: number } | null>(null);
 
   const handleViewerLoaded = useCallback((info: { animations: string[]; skins: string[]; bones: string[] }) => {
+    const requestId = previewRequestRef.current;
     setAnimations(info.animations);
     setSkins(info.skins);
     setBones(info.bones);
     // Get skeleton info after a tick (engine needs to finish setup)
     setTimeout(() => {
+      if (requestId !== previewRequestRef.current) return;
       const si = viewerRef.current?.getSkeletonInfo();
       if (si) setSkelInfo(si);
     }, 100);
@@ -320,24 +367,23 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setDraggingOver(false);
     if (!e.dataTransfer) return;
     setLoadingChar(true);
+    setPreviewError(null);
     try {
       const files = await getFilesFromDrop(e.dataTransfer);
-      const jsonFiles = files.filter(f => {
-        const n = f.name.toLowerCase();
-        return n.endsWith('.json') || n.endsWith('.skel');
-      });
+      const jsonFiles = files.filter(f => isSpineSkeletonFilename(f.name));
       const sets: ParsedSpineSet[] = [];
       for (const jf of jsonFiles) {
         const result = await parseSpineSet(jf, files);
         if (result) sets.push(result);
       }
       if (sets.length > 0) handleFilesLoaded(sets);
+      else setPreviewError(getSpineImportError(files));
     } catch (err) {
       console.error('[DROP] Error:', err);
       setPreviewError('Failed to parse dropped files');
     }
     setLoadingChar(false);
-  }, [handleFilesLoaded]);
+  }, [getSpineImportError, handleFilesLoaded]);
 
   const handleResize = useCallback((width: number) => {
     setPanelWidth(width);
@@ -358,7 +404,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const handleOpenImportDialog = async () => {
     if (viewerRef.current) {
       try {
-        const thumb = await viewerRef.current.captureThumbnail();
+        const thumb = await withTimeout(
+          viewerRef.current.captureThumbnail({ matchPreview: true }),
+          5000,
+          'Thumbnail capture'
+        );
         setPendingThumbnail(thumb);
       } catch (e) {
         console.warn('Failed to capture thumbnail', e);
@@ -366,6 +416,41 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     }
     setShowImportDialog(true);
   };
+
+  const handleUpdateThumbnail = useCallback(async () => {
+    if (!selectedChar || isUpdatingThumbnail) return;
+
+    if (viewMode !== 'single') {
+      setPreviewError('Switch to Single View before updating the thumbnail.');
+      return;
+    }
+
+    setIsUpdatingThumbnail(true);
+    setPreviewError(null);
+
+    try {
+      const thumbnail = await withTimeout(
+        viewerRef.current?.captureThumbnail({ matchPreview: true }) ?? Promise.resolve(null),
+        5000,
+        'Thumbnail capture'
+      );
+
+      if (!thumbnail) {
+        throw new Error('Could not capture thumbnail from the current preview.');
+      }
+
+      await updateThumbnail(selectedChar.id, thumbnail);
+      setSelectedChar((prev) => (prev ? { ...prev, thumbnail } : prev));
+      setLocalCharacters((prev) => prev.map((char) => (
+        char.id === selectedChar.id ? { ...char, thumbnail } : char
+      )));
+    } catch (err: any) {
+      console.error('[THUMBNAIL] Update failed:', err);
+      setPreviewError(err?.message || 'Failed to update thumbnail');
+    } finally {
+      setIsUpdatingThumbnail(false);
+    }
+  }, [isUpdatingThumbnail, selectedChar, viewMode]);
 
   const handleConfirmImport = useCallback(async (result: ImportResult) => {
     setLoadingChar(true);
@@ -380,17 +465,32 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
     try {
       console.time('[IMPORT] Total');
-      const supabase = createClient();
       let projectId = result.projectId;
+
+      const postJson = async <T,>(url: string, body: unknown, fallbackMessage: string): Promise<T> => {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || fallbackMessage);
+        }
+
+        return data as T;
+      };
       
       // If there's a new project created from ImportDialog, save it first
       if (result.newProject) {
         console.log('[IMPORT] Creating new project...');
-        const { data: projData, error: projErr } = await supabase.from('projects').insert([
-          { code: result.newProject.code, name: result.newProject.name, color: result.newProject.color }
-        ]).select('id').single();
-        if (projData) projectId = projData.id;
-        if (projErr) console.error('[IMPORT] Project create error:', projErr);
+        const project = await postJson<{ id: number }>(
+          '/api/library/project',
+          result.newProject,
+          'Failed to create project'
+        );
+        projectId = project.id;
       }
 
       for (const item of result.selectedItems) {
@@ -430,7 +530,12 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         };
         
         console.time('[IMPORT] saveCharacter');
-        const charId = await saveCharacter(charData);
+        const saved = await postJson<{ id: number }>(
+          '/api/library/save-character',
+          { char: charData },
+          'Failed to save character'
+        );
+        const charId = saved.id;
         console.timeEnd('[IMPORT] saveCharacter');
         console.log('[IMPORT] Saved charId:', charId);
 
@@ -441,7 +546,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
            const atlasBlob = new Blob([item.spineSet.spineFiles.atlasText]);
            const pngs = Array.from(item.spineSet.spineFiles.pngBlobs.entries()).map(([n, b]) => ({ name: n, blob: b }));
            const paths = await uploadSpineFiles(charId, jsonBlob, atlasBlob, pngs, item.spineSet.spineFiles.jsonName);
-           await supabase.from('characters').update({ json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths }).eq('id', charId);
+           await postJson(
+             '/api/library/character-assets',
+             { id: charId, updates: { json_path: paths.jsonPath, atlas_path: paths.atlasPath, png_paths: paths.pngPaths } },
+             'Failed to save storage paths'
+           );
            console.timeEnd('[IMPORT] R2 upload');
         } catch(e) {
            console.warn('[IMPORT] R2 upload failed, falling back to base64', e);
@@ -464,7 +573,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
                }
            }
            if (base64Paths.length > 0) {
-              await supabase.from('characters').update({ png_paths: base64Paths }).eq('id', charId);
+              await postJson(
+                '/api/library/character-assets',
+                { id: charId, updates: { png_paths: base64Paths } },
+                'Failed to save fallback PNG data'
+              );
            }
            console.timeEnd('[IMPORT] base64 fallback');
         }
@@ -550,14 +663,14 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setPreviewError(null);
     try {
       const files = Array.from(input.files);
-      const jsonFiles = files.filter(f => f.name.toLowerCase().endsWith('.json') || f.name.toLowerCase().endsWith('.skel'));
+      const jsonFiles = files.filter(f => isSpineSkeletonFilename(f.name));
       const sets: ParsedSpineSet[] = [];
       for (const jf of jsonFiles) {
         const result = await parseSpineSet(jf, files);
         if (result) sets.push(result);
       }
       if (sets.length > 0) handleFilesLoaded(sets);
-      else setPreviewError('No valid Spine files found in selection');
+      else setPreviewError(getSpineImportError(files));
     } catch (err) {
       console.error('[IMPORT] Error parsing selections:', err);
       setPreviewError('Failed to parse selected files');
@@ -565,7 +678,14 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       input.value = ''; // Reset to allow re-selecting same files
       setLoadingChar(false);
     }
-  }, [handleFilesLoaded]);
+  }, [getSpineImportError, handleFilesLoaded]);
+
+  useEffect(() => {
+    const input = hiddenFolderInputRef.current;
+    if (!input) return;
+    input.setAttribute('webkitdirectory', '');
+    input.setAttribute('directory', '');
+  }, []);
 
   return (
     <div id="main-layout" className="flex flex-1 overflow-hidden">
@@ -573,10 +693,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         id="hidden-file-input" 
         type="file" 
         multiple 
-        accept=".json,.skel,.atlas,.atlas.txt,.png" 
+        accept={SPINE_IMPORT_ACCEPT}
         className="hidden" 
         onChange={handleFileInput} 
         style={{ display: 'none' }} 
+      />
+      <input
+        id="hidden-folder-input"
+        ref={hiddenFolderInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileInput}
+        style={{ display: 'none' }}
       />
       {/* Left: Library Panel */}
       <div
@@ -654,6 +783,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
              </button>
           )}
 
+          {selectedChar && hasPreview && (
+            <button
+              type="button"
+              onClick={handleUpdateThumbnail}
+              disabled={loadingChar || isExporting || isUpdatingThumbnail}
+              className="ml-2 flex items-center gap-1.5 rounded border border-border bg-panel-secondary px-2.5 py-1 text-[11px] font-bold text-dim transition-colors hover:border-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              title="Update thumbnail from current preview"
+            >
+              {isUpdatingThumbnail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+              Update Thumbnail
+            </button>
+          )}
+
           {hasPreview && animations.length > 0 && (
             <div className="flex border border-border rounded bg-panel-secondary ml-auto mr-2">
               <button 
@@ -684,12 +826,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
 
         {/* === TOP: Preview Canvas — always visible with checkerboard === */}
         <div
-          className="relative overflow-hidden"
+          className="relative overflow-hidden checkerboard-bg"
           style={{
             flex: previewMaximized ? 1 : '1 1 50%',
             minHeight: previewMaximized ? 0 : 200,
             borderBottom: '1px solid var(--border)',
-            background: '#1a1a2e',
             outline: draggingOver ? '2px solid var(--accent)' : 'none',
           }}
           onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDraggingOver(true); }}
@@ -698,19 +839,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           onDrop={handleCanvasDrop}
         >
           {/* Loading overlay */}
-          {(loadingChar || isExporting) && (
+          {(loadingChar || isExporting || isUpdatingThumbnail) && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="flex flex-col items-center gap-3 text-white">
                 <Loader2 className="h-8 w-8 animate-spin text-accent drop-shadow-md" />
                 <span className="text-sm font-semibold tracking-wide drop-shadow-md">
-                  {isExporting ? 'Đang chuyển đổi Spine Version...' : 'Đang tải Assets...'}
+                  {isUpdatingThumbnail ? 'Updating thumbnail...' : isExporting ? 'Đang chuyển đổi Spine Version...' : 'Đang tải Assets...'}
                 </span>
-                {isExporting && (
+                {isExporting && !isUpdatingThumbnail && (
                   <span className="text-[10px] text-white/70 font-mono tracking-widest text-center">
                     QUÁ TRÌNH NÀY SẼ MẤT ÍT GIÂY TÙY VÀO DUNG LƯỢNG FILE
                   </span>
                 )}
-                {!isExporting && (
+                {!isExporting && !isUpdatingThumbnail && (
                   <button 
                     onClick={() => { setLoadingChar(false); setPreviewError('Loading cancelled by user.'); }}
                     className="mt-2 rounded-md border border-white/20 px-3 py-1 text-[11px] text-white/70 hover:bg-white/10 hover:text-white transition-colors"
@@ -740,6 +881,7 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
               />
             ) : (
               <SpineViewer
+                key={selectedChar?.id ?? previewName ?? 'drop-preview'}
                 ref={viewerRef}
                 spineFiles={previewFiles}
                 majorVersion={previewMajor}
@@ -758,7 +900,9 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           {!hasPreview && !loadingChar && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pointer-events-none">
               <Download className="h-8 w-8 text-dim opacity-40" />
-              <span className="text-xs text-dim font-mono tracking-wide opacity-60">Drop asset here to preview</span>
+              <span className="text-xs text-dim font-mono tracking-wide opacity-60">
+                {previewError || 'Drop asset here to preview'}
+              </span>
             </div>
           )}
         </div>

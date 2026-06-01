@@ -29,7 +29,7 @@ export function SpineGridViewer({ spineFiles, majorVersion, minorVersion, animat
             <div className="bg-panel px-2 py-1 text-[10px] font-mono font-bold text-dim border-b border-border truncate text-center" title={anim}>
               {anim}
             </div>
-            <div className="flex-1 relative bg-[#1a1a2e]">
+            <div className="flex-1 relative checkerboard-bg">
               <SpineViewer
                 key={`viewer-${spineFiles.jsonName}-${anim}`}
                 spineFiles={spineFiles}

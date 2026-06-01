@@ -10,7 +10,7 @@ export interface SpineViewerHandle {
   getSkeletonInfo: () => { bones: number; slots: number; anims: number; skins: number };
   playAnimation: (name: string) => void;
   setSkin: (name: string) => void;
-  captureThumbnail: () => Promise<string | null>;
+  captureThumbnail: (options?: { matchPreview?: boolean }) => Promise<string | null>;
 }
 
 interface SpineViewerProps {
@@ -44,7 +44,7 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
     getSkeletonInfo: () => engineRef.current?.getSkeletonInfo() ?? { bones: 0, slots: 0, anims: 0, skins: 0 },
     playAnimation: (name: string) => engineRef.current?.playAnimation(name),
     setSkin: (name: string) => engineRef.current?.setSkin(name),
-    captureThumbnail: async () => engineRef.current?.captureThumbnail() ?? null,
+    captureThumbnail: async (options) => engineRef.current?.captureThumbnail(options) ?? null,
   }));
 
   // Initialize engine on mount
@@ -177,7 +177,7 @@ const SpineViewer = forwardRef<SpineViewerHandle, SpineViewerProps>(function Spi
   }, []);
 
   return (
-    <div className={`spine-viewer-wrapper ${className || ''}`} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#1a1a2e' }}>
+    <div className={`spine-viewer-wrapper checkerboard-bg ${className || ''}`} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <div
         ref={containerRef}
         style={{ width: '100%', height: '100%', cursor: isDragging.current ? 'grabbing' : 'grab' }}

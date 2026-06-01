@@ -61,9 +61,12 @@ export function AuthForm() {
 
   return (
     <div className="w-full max-w-sm rounded-xl border border-border bg-panel p-8 shadow-2xl">
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold tracking-wider text-white">LIVE <span className="bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">ASSET</span></h1>
-        <p className="mt-1 text-xs text-dim">Asset Management Platform</p>
+      <div className="mb-6 flex flex-col items-center">
+        <div className="flex items-center mb-2">
+          <img src="/logo.png" alt="Asset Vault" className="h-10 w-10 object-contain -mr-0.5 hover:scale-110 transition-transform duration-300" style={{ filter: 'drop-shadow(0 3px 10px rgba(249,115,22,0.7))' }} />
+          <h1 className="text-[32px] font-black tracking-tight leading-none select-none py-1"><span className="text-white">ASSET</span><span className="bg-gradient-to-r from-orange-400 via-rose-500 to-pink-500 bg-clip-text text-transparent">VAULT</span></h1>
+        </div>
+        <p className="text-[13px] font-medium text-dim/70 tracking-widest uppercase">Asset Management Platform</p>
       </div>
       <div className="mb-6 flex gap-1 rounded-lg bg-bg p-1">
         {(['login', 'signup', 'forgot'] as AuthView[]).map((v) => (

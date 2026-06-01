@@ -99,13 +99,17 @@ export async function saveCharacter(char: Omit<Character, 'id' | 'created_at'>):
   }
 
   // Phase 2: Save heavy text data separately (avoids single-request payload limits)
-  if (jsonText || atlasText) {
-    console.log('[saveCharacter] Saving heavy text data for id:', charId, `json: ${(jsonText.length / 1024).toFixed(0)}KB, atlas: ${(atlasText.length / 1024).toFixed(0)}KB`);
+  // Skip for files > 4MB total — they'll be stored on R2 only
+  const totalTextSize = (jsonText?.length || 0) + (atlasText?.length || 0);
+  const MAX_SUPABASE_TEXT = 4 * 1024 * 1024; // 4MB
+  if ((jsonText || atlasText) && totalTextSize < MAX_SUPABASE_TEXT) {
+    console.log('[saveCharacter] Saving text to Supabase for id:', charId, `json: ${(jsonText.length / 1024).toFixed(0)}KB, atlas: ${(atlasText.length / 1024).toFixed(0)}KB`);
     const { error: textError } = await supabase.from('characters').update({ json_text: jsonText, atlas_text: atlasText }).eq('id', charId);
     if (textError) {
       console.error('[saveCharacter] Heavy text update failed:', textError);
-      // Don't throw — metadata is saved, text can be recovered from R2
     }
+  } else if (totalTextSize >= MAX_SUPABASE_TEXT) {
+    console.log(`[saveCharacter] Text too large for Supabase (${(totalTextSize / 1024 / 1024).toFixed(1)}MB) — will rely on R2 storage`);
   }
 
   return charId;
@@ -124,14 +128,24 @@ export async function getCharacter(id: number): Promise<Character | null> {
 }
 
 export async function deleteCharacter(id: number): Promise<void> {
-  const res = await fetch('/api/admin/delete-character', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Delete failed (${res.status})`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch('/api/admin/delete-character', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Delete failed (${res.status})`);
+    }
+  } catch (e: any) {
+    if (e.name === 'AbortError') throw new Error('Delete timed out — please refresh to check if it succeeded');
+    throw e;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

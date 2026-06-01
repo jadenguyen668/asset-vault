@@ -6,6 +6,7 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 import os from 'os';
 import { bakePhysics } from '@/lib/spine/physics-baker';
+import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,6 +22,13 @@ const DEFAULT_EXPORT_JSON = {
 
 export async function POST(req: Request) {
     try {
+        if (!SPINE_CONVERT_ENABLED) {
+            return NextResponse.json(
+                { error: 'Spine version conversion is disabled in this deployment.' },
+                { status: 403 }
+            );
+        }
+
         const { jsonText, targetVersion } = await req.json();
 
         if (!jsonText || !targetVersion) {
@@ -165,9 +173,7 @@ export async function POST(req: Request) {
                 convertedJsonText = JSON.stringify(testParse);
             }
 
-            // Debug: save a copy for inspection
-            const debugCopyPath = path.join('d:/Dev/live_asset/tmp_debug', `output_${targetMajor}.${targetMinor}.json`);
-            try { await fs.writeFile(debugCopyPath, convertedJsonText, 'utf-8'); } catch(e) {}
+            // Debug logging disabled for production
 
             // Detailed logging
             console.log(`[SPINE CONVERT] Output file: ${generatedJsonFile}, size: ${convertedJsonText.length} bytes`);

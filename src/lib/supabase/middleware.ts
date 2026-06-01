@@ -17,13 +17,13 @@ export async function updateSession(request: NextRequest) {
       },
     }
   );
-  const { data: { user } } = await supabase.auth.getUser();
+  // Skip auth check for all API routes — they handle their own authentication
   const pathname = request.nextUrl.pathname;
-
-  // Allow unauthenticated access to auth API routes (e.g., admin-login)
-  if (pathname.startsWith('/api/auth/')) {
+  if (pathname.startsWith('/api/')) {
     return supabaseResponse;
   }
+
+  const { data: { user } } = await supabase.auth.getUser();
 
   if (!user && !pathname.startsWith('/login')) {
     const url = request.nextUrl.clone();
