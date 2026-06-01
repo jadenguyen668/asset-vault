@@ -13,14 +13,15 @@ import type { Character, Project, Collection } from '@/types/database';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 import { downloadFile } from '@/lib/storage/r2';
 import { ViewerProperties } from '@/components/viewer/ViewerProperties';
-import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save, LayoutGrid, LayoutPanelLeft } from 'lucide-react';
+import { Bone, Layers, Film, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, Loader2, Download, Play, Pause, Repeat, Save, LayoutGrid, LayoutPanelLeft, Camera } from 'lucide-react';
 import { ImportDialog, type ImportResult } from './ImportDialog';
 import { uploadSpineFiles } from '@/lib/storage/r2';
 import { createClient } from '@/lib/supabase/client';
-import { deleteCharacter, updatePreviewConfig } from '@/lib/db/characters';
+import { deleteCharacter, updatePreviewConfig, updateThumbnail } from '@/lib/db/characters';
 import { downloadAsZip, type RuntimeMetaConfig } from '@/lib/export/meta-config';
 import { useRouter } from 'next/navigation';
 import { SPINE_CONVERT_ENABLED } from '@/lib/spine/convert-feature';
+import { isSpineSkeletonFilename, SPINE_IMPORT_ACCEPT } from '@/lib/spine/file-utils';
 
 interface Props {
   initialCharacters: Character[];
@@ -28,10 +29,25 @@ interface Props {
   initialCollections: Collection[];
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export function LibraryView({ initialCharacters, initialProjects, initialCollections }: Props) {
   useAuth();
 
   const viewerRef = useRef<SpineViewerHandle>(null);
+  const hiddenFolderInputRef = useRef<HTMLInputElement | null>(null);
   const router = useRouter();
   const [activeSets, setActiveSets] = useState<ParsedSpineSet[]>([]);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -86,6 +102,15 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   }, [selectedChar]);
 
   const [isExporting, setIsExporting] = useState(false);
+  const [isUpdatingThumbnail, setIsUpdatingThumbnail] = useState(false);
+
+  const getSpineImportError = useCallback((files: File[]) => {
+    const hasSkeleton = files.some((file) => isSpineSkeletonFilename(file.name));
+    if (!hasSkeleton) {
+      return 'No supported Spine skeleton file found. Use .json, .spine-json, or .skel.';
+    }
+    return 'Preview needs the full Spine set: skeleton (.json or .spine-json) + .atlas + referenced .png textures.';
+  }, []);
 
   const handleExportBundle = useCallback(async (targetVersion?: string) => {
     if (!previewFiles || !selectedChar) return;
@@ -342,24 +367,23 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setDraggingOver(false);
     if (!e.dataTransfer) return;
     setLoadingChar(true);
+    setPreviewError(null);
     try {
       const files = await getFilesFromDrop(e.dataTransfer);
-      const jsonFiles = files.filter(f => {
-        const n = f.name.toLowerCase();
-        return n.endsWith('.json') || n.endsWith('.skel');
-      });
+      const jsonFiles = files.filter(f => isSpineSkeletonFilename(f.name));
       const sets: ParsedSpineSet[] = [];
       for (const jf of jsonFiles) {
         const result = await parseSpineSet(jf, files);
         if (result) sets.push(result);
       }
       if (sets.length > 0) handleFilesLoaded(sets);
+      else setPreviewError(getSpineImportError(files));
     } catch (err) {
       console.error('[DROP] Error:', err);
       setPreviewError('Failed to parse dropped files');
     }
     setLoadingChar(false);
-  }, [handleFilesLoaded]);
+  }, [getSpineImportError, handleFilesLoaded]);
 
   const handleResize = useCallback((width: number) => {
     setPanelWidth(width);
@@ -380,7 +404,11 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
   const handleOpenImportDialog = async () => {
     if (viewerRef.current) {
       try {
-        const thumb = await viewerRef.current.captureThumbnail();
+        const thumb = await withTimeout(
+          viewerRef.current.captureThumbnail({ matchPreview: true }),
+          5000,
+          'Thumbnail capture'
+        );
         setPendingThumbnail(thumb);
       } catch (e) {
         console.warn('Failed to capture thumbnail', e);
@@ -388,6 +416,41 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     }
     setShowImportDialog(true);
   };
+
+  const handleUpdateThumbnail = useCallback(async () => {
+    if (!selectedChar || isUpdatingThumbnail) return;
+
+    if (viewMode !== 'single') {
+      setPreviewError('Switch to Single View before updating the thumbnail.');
+      return;
+    }
+
+    setIsUpdatingThumbnail(true);
+    setPreviewError(null);
+
+    try {
+      const thumbnail = await withTimeout(
+        viewerRef.current?.captureThumbnail({ matchPreview: true }) ?? Promise.resolve(null),
+        5000,
+        'Thumbnail capture'
+      );
+
+      if (!thumbnail) {
+        throw new Error('Could not capture thumbnail from the current preview.');
+      }
+
+      await updateThumbnail(selectedChar.id, thumbnail);
+      setSelectedChar((prev) => (prev ? { ...prev, thumbnail } : prev));
+      setLocalCharacters((prev) => prev.map((char) => (
+        char.id === selectedChar.id ? { ...char, thumbnail } : char
+      )));
+    } catch (err: any) {
+      console.error('[THUMBNAIL] Update failed:', err);
+      setPreviewError(err?.message || 'Failed to update thumbnail');
+    } finally {
+      setIsUpdatingThumbnail(false);
+    }
+  }, [isUpdatingThumbnail, selectedChar, viewMode]);
 
   const handleConfirmImport = useCallback(async (result: ImportResult) => {
     setLoadingChar(true);
@@ -600,14 +663,14 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
     setPreviewError(null);
     try {
       const files = Array.from(input.files);
-      const jsonFiles = files.filter(f => f.name.toLowerCase().endsWith('.json') || f.name.toLowerCase().endsWith('.skel'));
+      const jsonFiles = files.filter(f => isSpineSkeletonFilename(f.name));
       const sets: ParsedSpineSet[] = [];
       for (const jf of jsonFiles) {
         const result = await parseSpineSet(jf, files);
         if (result) sets.push(result);
       }
       if (sets.length > 0) handleFilesLoaded(sets);
-      else setPreviewError('No valid Spine files found in selection');
+      else setPreviewError(getSpineImportError(files));
     } catch (err) {
       console.error('[IMPORT] Error parsing selections:', err);
       setPreviewError('Failed to parse selected files');
@@ -615,7 +678,14 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
       input.value = ''; // Reset to allow re-selecting same files
       setLoadingChar(false);
     }
-  }, [handleFilesLoaded]);
+  }, [getSpineImportError, handleFilesLoaded]);
+
+  useEffect(() => {
+    const input = hiddenFolderInputRef.current;
+    if (!input) return;
+    input.setAttribute('webkitdirectory', '');
+    input.setAttribute('directory', '');
+  }, []);
 
   return (
     <div id="main-layout" className="flex flex-1 overflow-hidden">
@@ -623,10 +693,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
         id="hidden-file-input" 
         type="file" 
         multiple 
-        accept=".json,.skel,.atlas,.atlas.txt,.png" 
+        accept={SPINE_IMPORT_ACCEPT}
         className="hidden" 
         onChange={handleFileInput} 
         style={{ display: 'none' }} 
+      />
+      <input
+        id="hidden-folder-input"
+        ref={hiddenFolderInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileInput}
+        style={{ display: 'none' }}
       />
       {/* Left: Library Panel */}
       <div
@@ -704,6 +783,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
              </button>
           )}
 
+          {selectedChar && hasPreview && (
+            <button
+              type="button"
+              onClick={handleUpdateThumbnail}
+              disabled={loadingChar || isExporting || isUpdatingThumbnail}
+              className="ml-2 flex items-center gap-1.5 rounded border border-border bg-panel-secondary px-2.5 py-1 text-[11px] font-bold text-dim transition-colors hover:border-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              title="Update thumbnail from current preview"
+            >
+              {isUpdatingThumbnail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+              Update Thumbnail
+            </button>
+          )}
+
           {hasPreview && animations.length > 0 && (
             <div className="flex border border-border rounded bg-panel-secondary ml-auto mr-2">
               <button 
@@ -747,19 +839,19 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           onDrop={handleCanvasDrop}
         >
           {/* Loading overlay */}
-          {(loadingChar || isExporting) && (
+          {(loadingChar || isExporting || isUpdatingThumbnail) && (
             <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 backdrop-blur-sm">
               <div className="flex flex-col items-center gap-3 text-white">
                 <Loader2 className="h-8 w-8 animate-spin text-accent drop-shadow-md" />
                 <span className="text-sm font-semibold tracking-wide drop-shadow-md">
-                  {isExporting ? 'Đang chuyển đổi Spine Version...' : 'Đang tải Assets...'}
+                  {isUpdatingThumbnail ? 'Updating thumbnail...' : isExporting ? 'Đang chuyển đổi Spine Version...' : 'Đang tải Assets...'}
                 </span>
-                {isExporting && (
+                {isExporting && !isUpdatingThumbnail && (
                   <span className="text-[10px] text-white/70 font-mono tracking-widest text-center">
                     QUÁ TRÌNH NÀY SẼ MẤT ÍT GIÂY TÙY VÀO DUNG LƯỢNG FILE
                   </span>
                 )}
-                {!isExporting && (
+                {!isExporting && !isUpdatingThumbnail && (
                   <button 
                     onClick={() => { setLoadingChar(false); setPreviewError('Loading cancelled by user.'); }}
                     className="mt-2 rounded-md border border-white/20 px-3 py-1 text-[11px] text-white/70 hover:bg-white/10 hover:text-white transition-colors"
@@ -808,7 +900,9 @@ export function LibraryView({ initialCharacters, initialProjects, initialCollect
           {!hasPreview && !loadingChar && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pointer-events-none">
               <Download className="h-8 w-8 text-dim opacity-40" />
-              <span className="text-xs text-dim font-mono tracking-wide opacity-60">Drop asset here to preview</span>
+              <span className="text-xs text-dim font-mono tracking-wide opacity-60">
+                {previewError || 'Drop asset here to preview'}
+              </span>
             </div>
           )}
         </div>

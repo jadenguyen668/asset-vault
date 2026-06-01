@@ -1,6 +1,6 @@
 'use client';
 import { useAppStore } from '@/stores/appStore';
-import { Search, Upload } from 'lucide-react';
+import { FolderOpen, Search, Upload } from 'lucide-react';
 
 export function LibrarySearch() {
   const { searchQuery, setSearchQuery, sortBy, setSortBy } = useAppStore();
@@ -16,6 +16,13 @@ export function LibrarySearch() {
       </select>
       <button onClick={() => document.getElementById('hidden-file-input')?.click()} className="flex shrink-0 items-center gap-1.5 rounded-md bg-gradient-to-br from-accent to-[#6d4fde] px-3 py-1.5 text-xs font-bold text-white hover:-translate-y-0.5 hover:shadow-lg">
         <Upload className="h-3.5 w-3.5" /> IMPORT
+      </button>
+      <button
+        onClick={() => document.getElementById('hidden-folder-input')?.click()}
+        className="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-panel-secondary px-2.5 py-1.5 text-xs font-bold text-text hover:border-accent hover:text-white"
+        title="Import an entire folder"
+      >
+        <FolderOpen className="h-3.5 w-3.5" /> FOLDER
       </button>
     </div>
   );

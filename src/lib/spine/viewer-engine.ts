@@ -17,6 +17,10 @@ export interface SpineFiles {
   jsonName: string;
 }
 
+interface ThumbnailCaptureOptions {
+  matchPreview?: boolean;
+}
+
 interface ViewerState {
   canvas: HTMLCanvasElement;
   ctx2d: CanvasRenderingContext2D | null;
@@ -85,6 +89,7 @@ export class SpineViewerEngine {
   private _thumbnailMatteMode = false;
   private _thumbnailBoundsCanvas: HTMLCanvasElement | null = null;
   private _setupPoseMode = false;
+  private _captureOptions: ThumbnailCaptureOptions | null = null;
   private _dpr = window.devicePixelRatio || 1;
 
   constructor(container: HTMLElement) {
@@ -181,31 +186,36 @@ export class SpineViewerEngine {
     }
 
     if (this._captureResolve && this.state.canvas) {
+      const captureOptions = this._captureOptions;
+      const matchPreview = captureOptions?.matchPreview ?? false;
+
       // Save current view state
       const savedScale = this.state.scale;
       const savedOffsetX = this.state.offsetX;
       const savedOffsetY = this.state.offsetY;
       const savedViewZoom = this.state.viewZoom;
-      // Reset to auto-fit defaults so full content is visible on canvas
-      this.state.scale = 1;
-      this.state.viewZoom = 1;
 
-      // Switch to Setup Pose for consistent thumbnail (instead of random animation frame)
       const { skeleton, animState } = this.state;
       // Save current track info to restore later
       const savedTrack = animState.getCurrent(0);
       const savedTrackTime = savedTrack ? savedTrack.trackTime : 0;
       const savedTrackName = savedTrack?.animation?.name || null;
 
-      // Only reset bones (not slots) — preserves slot colors, blend modes, and FX fixes
-      skeleton.setBonesToSetupPose();
-      this._setupPoseMode = true;
-      if (this.state.runtimeVersion === '4.x') {
-        try {
-          skeleton.updateWorldTransform(this._spine4?.Physics?.update ?? this._spine4?.Physics?.none ?? 0 as any);
-        } catch { try { skeleton.updateWorldTransform(0 as any); } catch {} }
-      } else {
-        skeleton.updateWorldTransform();
+      if (!matchPreview) {
+        // Reset to auto-fit defaults so full content is visible on canvas.
+        this.state.scale = 1;
+        this.state.viewZoom = 1;
+
+        // Only reset bones (not slots) — preserves slot colors, blend modes, and FX fixes.
+        skeleton.setBonesToSetupPose();
+        this._setupPoseMode = true;
+        if (this.state.runtimeVersion === '4.x') {
+          try {
+            skeleton.updateWorldTransform(this._spine4?.Physics?.update ?? this._spine4?.Physics?.none ?? 0 as any);
+          } catch { try { skeleton.updateWorldTransform(0 as any); } catch {} }
+        } else {
+          skeleton.updateWorldTransform();
+        }
       }
 
       // Pass 1: Transparent render to find content bounds
@@ -232,7 +242,7 @@ export class SpineViewerEngine {
 
       // Restore animation state after capture
       this._setupPoseMode = false;
-      if (savedTrackName) {
+      if (!matchPreview && savedTrackName) {
         animState.setAnimation(0, savedTrackName, savedTrack?.loop ?? true);
         const restoredTrack = animState.getCurrent(0);
         if (restoredTrack) restoredTrack.trackTime = savedTrackTime;
@@ -254,12 +264,13 @@ export class SpineViewerEngine {
 
       const cb = this._captureResolve;
       this._captureResolve = null;
+      this._captureOptions = null;
       cb('');
     }
   };
 
   private _captureResolve: ((dataUrl: string) => void) | null = null;
-  captureThumbnail(): Promise<string> {
+  captureThumbnail(options?: ThumbnailCaptureOptions): Promise<string> {
     return new Promise((resolve) => {
       if (!this.state?.skeleton || !this.state.canvas) {
         resolve('');
@@ -272,6 +283,7 @@ export class SpineViewerEngine {
           resolve('');
         }
       }, 3000);
+      this._captureOptions = options ?? null;
       // Schedule capture in render loop — it will re-render with transparent bg
       this._captureResolve = () => {
         clearTimeout(timeout);
@@ -344,6 +356,7 @@ export class SpineViewerEngine {
           resolve('');
         } finally {
           this._thumbnailBoundsCanvas = null;
+          this._captureOptions = null;
         }
       };
     });

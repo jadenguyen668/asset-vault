@@ -1,7 +1,8 @@
 'use client';
 import { useState, useCallback, useRef } from 'react';
-import { Upload, FileImage, Sparkles } from 'lucide-react';
+import { Upload, FileImage, FolderOpen, Sparkles } from 'lucide-react';
 import { detectVersion } from '@/lib/spine/version-detect';
+import { isSpineSkeletonFilename, SPINE_IMPORT_ACCEPT, stripSpineSkeletonExtension } from '@/lib/spine/file-utils';
 import type { SpineFiles } from '@/lib/spine/viewer-engine';
 
 interface ParsedSpineSet {
@@ -76,7 +77,7 @@ async function getFilesFromDrop(dataTransfer: DataTransfer): Promise<File[]> {
 
 /** Parse a set of files into SpineFiles */
 async function parseSpineSet(jsonFile: File, allFiles: File[]): Promise<ParsedSpineSet | null> {
-  const baseName = jsonFile.name.replace(/\.(json|skel)$/i, '');
+  const baseName = stripSpineSkeletonExtension(jsonFile.name);
   const baseNameLower = baseName.toLowerCase();
   const jsonPath = (jsonFile as any).webkitRelativePath || jsonFile.name;
   const jsonDir = jsonPath.includes('/') ? jsonPath.substring(0, jsonPath.lastIndexOf('/') + 1) : '';
@@ -162,6 +163,22 @@ export function DropZone({ onFilesLoaded }: DropZoneProps) {
   const [parsing, setParsing] = useState(false);
   const dragCounter = useRef(0);
 
+  const processSelectedFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    setParsing(true);
+    try {
+      const jsonFiles = files.filter((file) => isSpineSkeletonFilename(file.name));
+      const sets: ParsedSpineSet[] = [];
+      for (const jf of jsonFiles) {
+        const result = await parseSpineSet(jf, files);
+        if (result) sets.push(result);
+      }
+      if (sets.length > 0) onFilesLoaded(sets);
+    } finally {
+      setParsing(false);
+    }
+  }, [onFilesLoaded]);
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation();
     dragCounter.current++;
@@ -187,10 +204,7 @@ export function DropZone({ onFilesLoaded }: DropZoneProps) {
     setParsing(true);
     try {
       const files = await getFilesFromDrop(e.dataTransfer);
-      const jsonFiles = files.filter(f => {
-        const n = f.name.toLowerCase();
-        return n.endsWith('.json') || n.endsWith('.skel');
-      });
+      const jsonFiles = files.filter(f => isSpineSkeletonFilename(f.name));
 
       const sets: ParsedSpineSet[] = [];
       for (const jf of jsonFiles) {
@@ -206,29 +220,33 @@ export function DropZone({ onFilesLoaded }: DropZoneProps) {
     }
   }, [onFilesLoaded]);
 
-  const handleBrowse = useCallback(() => {
+  const openPicker = useCallback((mode: 'files' | 'folder') => {
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
-    input.accept = '.json,.skel,.atlas,.atlas.txt,.png';
+    input.accept = SPINE_IMPORT_ACCEPT;
+    if (mode === 'folder') {
+      input.setAttribute('webkitdirectory', '');
+      input.setAttribute('directory', '');
+    }
     input.style.display = 'none';
     document.body.appendChild(input);
     input.addEventListener('change', async () => {
       if (!input.files || input.files.length === 0) { input.remove(); return; }
-      setParsing(true);
       try {
-        const files = Array.from(input.files);
-        const jsonFiles = files.filter(f => f.name.toLowerCase().endsWith('.json') || f.name.toLowerCase().endsWith('.skel'));
-        const sets: ParsedSpineSet[] = [];
-        for (const jf of jsonFiles) {
-          const result = await parseSpineSet(jf, files);
-          if (result) sets.push(result);
-        }
-        if (sets.length > 0) onFilesLoaded(sets);
-      } finally { setParsing(false); input.remove(); }
+        await processSelectedFiles(Array.from(input.files));
+      } finally { input.remove(); }
     });
     input.click();
-  }, [onFilesLoaded]);
+  }, [processSelectedFiles]);
+
+  const handleBrowseFiles = useCallback(() => {
+    openPicker('files');
+  }, [openPicker]);
+
+  const handleBrowseFolder = useCallback(() => {
+    openPicker('folder');
+  }, [openPicker]);
 
   return (
     <div
@@ -254,12 +272,17 @@ export function DropZone({ onFilesLoaded }: DropZoneProps) {
             </p>
             <p className="drop-zone-sub">
               Drop a folder or select files containing<br />
-              <span className="drop-zone-formats">.json</span> + <span className="drop-zone-formats">.atlas</span> + <span className="drop-zone-formats">.png</span>
+              <span className="drop-zone-formats">.json</span> or <span className="drop-zone-formats">.spine-json</span> + <span className="drop-zone-formats">.atlas</span> + <span className="drop-zone-formats">.png</span>
             </p>
             {!dragging && (
-              <button onClick={handleBrowse} className="drop-zone-btn">
-                <FileImage size={14} /> Browse Files
-              </button>
+              <div className="drop-zone-actions">
+                <button onClick={handleBrowseFiles} className="drop-zone-btn">
+                  <FileImage size={14} /> Browse Files
+                </button>
+                <button onClick={handleBrowseFolder} className="drop-zone-btn drop-zone-btn-secondary">
+                  <FolderOpen size={14} /> Browse Folder
+                </button>
+              </div>
             )}
             <div className="drop-zone-hint">
               <span>Supports Spine 3.x & 4.x</span>
@@ -351,6 +374,19 @@ export function DropZone({ onFilesLoaded }: DropZoneProps) {
         .drop-zone-btn:hover {
           background: var(--accent, #7c5cfc);
           color: #fff;
+        }
+        .drop-zone-btn-secondary {
+          border-color: var(--border, #2a2a3e);
+          color: var(--text, #e0e0e0);
+        }
+        .drop-zone-btn-secondary:hover {
+          border-color: var(--accent, #7c5cfc);
+        }
+        .drop-zone-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          justify-content: center;
         }
         .drop-zone-hint {
           font-size: 11px;
